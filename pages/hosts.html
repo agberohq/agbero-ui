@@ -333,7 +333,7 @@
 
     on('[data-action="copy-url"]', 'click', (e, btn) => {
         e.stopPropagation();
-        clipboard.copy(btn.dataset.url).then(() => notify.show('Copied', 'success')).catch(() => {});
+        clipboard.write(btn.dataset.url).then(() => notify.show('Copied', 'success')).catch(() => {});
     });
 
     on('[data-action="edit-json"]', 'click', (e, btn) => {

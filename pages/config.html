@@ -62,6 +62,7 @@
                 <tbody id="configHostsBody"></tbody>
             </table>
         </div>
+        <div id="configHostsPager"></div>
     </div>
 
     <div class="config-section">
@@ -82,12 +83,20 @@
 </div>
 
 <script type="module">
-    import { on, ui, clipboard, notify, query, queryAll } from '../lib/oja.full.esm.js';
+    import { on, ui, clipboard, notify, query, queryAll, pagination } from '../lib/oja.full.esm.js';
     import { store, getCreds } from '../js/store.js';
     import { fetchConfig, fetchUptime } from '../js/api.js';
 
     let _prevConfig = null;
     let _currConfig = null;
+    let _allHosts   = {};
+
+    // Pagination instance for Hosts Summary (pageSize=10)
+    const _hostsPg = pagination({
+        pageSize: 10,
+        onPageChange: () => renderHostsSummary(_allHosts),
+    });
+    _hostsPg.mount(query('#configHostsPager'));
 
     const set = (id, v) => { const e = query('#' + id); if (e) e.innerText = v ?? '—'; };
 
@@ -243,18 +252,23 @@
     }
 
     function renderHostsSummary(hosts) {
+        _allHosts = hosts || {};
         const tbody = query('#configHostsBody');
         if (!tbody) return;
-        if (!hosts || !Object.keys(hosts).length) {
+        const entries = Object.entries(_allHosts);
+        if (!entries.length) {
             tbody.innerHTML = '<tr><td colspan="5"><div class="empty-state">No hosts configured</div></td></tr>';
+            _hostsPg.updateTotal(0);
             return;
         }
-        tbody.innerHTML = Object.entries(hosts).map(([hostname, host]) => {
-            const routeCount = (host.routes?.length || 0) + (host.proxies?.length || 0);
+        _hostsPg.updateTotal(entries.length);
+        const page = _hostsPg.slice(entries);
+        tbody.innerHTML = page.map(([hostname, host]) => {
+            const routeCount   = (host.routes?.length || 0) + (host.proxies?.length || 0);
             const backendCount = countBackends(host);
             const tlsMode = host.tls?.mode || 'none';
-            const tlsCls = tlsMode === 'none' ? 'error' : (tlsMode.includes('local') ? 'warning' : 'success');
-            const tlsTxt = tlsMode === 'none' ? 'No TLS' : (tlsMode.includes('local') ? 'Local' : 'Auto');
+            const tlsCls  = tlsMode === 'none' ? 'error' : (tlsMode.includes('local') ? 'warning' : 'success');
+            const tlsTxt  = tlsMode === 'none' ? 'No TLS' : (tlsMode.includes('local') ? 'Local' : 'Auto');
             const domains = (host.domains ||[]).slice(0, 2).join(', ') + (host.domains?.length > 2 ? '…' : '');
             return `<tr><td class="mono">${hostname}</td><td>${routeCount}</td><td>${backendCount}</td><td><span class="badge ${tlsCls}">${tlsTxt}</span></td><td>${domains}</td></tr>`;
         }).join('');
@@ -320,7 +334,7 @@
 
     on('.config-copy', 'click', (e, btn) => {
         const text = query('#configContent')?.innerText || '';
-        clipboard.copy(text)
+        clipboard.write(text)
             .then(() => notify.show('Copied', 'success'))
             .catch(() => notify.show('Copy failed', 'error'));
     });

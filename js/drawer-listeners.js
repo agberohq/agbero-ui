@@ -32,6 +32,12 @@ on('#drawerBackdrop', 'click', () => {
     query('#drawerBackdrop')?.classList.remove('active');
 });
 
+// Performance button inside the route drawer
+on('#drawerPerfBtn', 'click', () => {
+    const hostname = query('#drawerHostName')?.innerText;
+    if (hostname) emit('perf:open', { hostname });
+});
+
 // ── Delegated drawer interactions — registered once, work across re-renders ───
 
 on('[data-action="open-backend"]', 'click', (e, btn) => {
@@ -45,7 +51,7 @@ on('[data-action="open-backend"]', 'click', (e, btn) => {
 
 on('[data-action="copy-url"]', 'click', (e, btn) => {
     e.stopPropagation();
-    clipboard.copy(btn.dataset.url)
+    clipboard.write(btn.dataset.url)
         .then(() => notify.show('Copied', 'success'))
         .catch(() => {});
 });

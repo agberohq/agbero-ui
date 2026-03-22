@@ -77,6 +77,7 @@
             <span class="login-node-label">NODE</span>
             <span class="login-node-value" id="loginNodeDisplay">local</span>
             <button type="button" id="loginEditNodeBtn" class="btn-link">change</button>
+            <span id="loginServerDot" title="Server reachability" style="display:inline-flex;align-items:center;gap:4px;margin-left:8px;font-size:10px;color:var(--text-mute);"><span id="loginServerDotCircle" style="display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--text-mute);"></span><span id="loginServerDotLabel">checking…</span></span>
         </div>
         <div class="login-node-edit" id="loginNodeEdit">
             <input type="url" id="loginTargetHost" placeholder="http://10.0.0.5:9090" autocomplete="off">
@@ -279,6 +280,7 @@
     import { modal, layout, emit, listen, chart, on, auth, ui, query } from '../lib/oja.full.esm.js';
     import { store, getCreds, isLoggedIn, setCredentials, clearCredentials, getHost, setHost } from '../js/store.js';
     import { fetchTelemetry, login, addFirewallRule, broadcastClusterRoute, addHost, deleteHost } from '../js/api.js';
+    import { loadConfigData } from '../js/main.js';
     let _perfCharts = null;
 
     // JSON Syntax Highlighter wrapper (Outputs beautifully themed <pre> block)
@@ -314,11 +316,7 @@
         document.getElementById('loginNodeEdit').style.display = 'none';
     });
 
-    on('#themeToggle', 'click', () => {
-        const next = document.documentElement.getAttribute('data-theme') === 'light' ? 'dark' : 'light';
-        document.documentElement.setAttribute('data-theme', next);
-        localStorage.setItem('theme', next);
-    });
+    on('#themeToggle', 'click', () => { ui.theme.toggle(); });
 
     on('#targetHostBtn', 'click', () => { document.getElementById('targetHostInput').value = getHost(); modal.open('targetHostModal'); });
     on('#targetHostForm', 'submit', (e, el) => {
@@ -352,7 +350,7 @@
         startLatencyChecks();
     });
 
-    on('.modal-overlay', 'click', (e, overlay) => { if (e.target === overlay) modal.closeAll(); });
+    on('.modal-overlay', 'click', (e, overlay) => { if (e.target === overlay && overlay.id !== 'loginModal') modal.closeAll(); });
     on('.close-modal', 'click', () => modal.closeAll());
 
     on('#ruleForm', 'submit', async (e, form) => {
@@ -418,6 +416,7 @@
             ui.btn.done(btn, 'Saved ✓');
             setTimeout(() => modal.closeAll(), 800);
             emit('hosts:refresh');
+            loadConfigData();
         } catch (err) {
             ui.btn.reset(btn);
             errEl.textContent = err.message; errEl.style.display = 'block';
@@ -466,6 +465,7 @@
         const banner = document.getElementById('offlineBanner');
         if (!navigator.onLine) {
             store.set('conn.html', `<span class="conn-dot"><span class="conn-dot-circle" style="background:var(--danger)"></span><span>offline</span></span>`);
+            updateLoginDot('var(--danger)', 'offline');
             if (banner) { banner.style.display = 'block'; banner.classList.add('active'); }
             scheduleLatencyCheck(LATENCY_OFFLINE_MS);
             return;
@@ -488,6 +488,7 @@
             }
             if (res.status === 401) {
                 store.set('conn.html', `<span class="conn-dot"><span class="conn-dot-circle" style="background:var(--danger)"></span><span>auth</span></span>`);
+                updateLoginDot('var(--warning)', 'reachable');
                 scheduleLatencyCheck(LATENCY_ONLINE_MS);
                 return;
             }
@@ -496,10 +497,12 @@
             const ms = Date.now() - start;
             const color = ms < 100 ? 'var(--success)' : ms < 300 ? 'var(--info)' : ms < 1000 ? 'var(--warning)' : 'var(--danger)';
             store.set('conn.html', `<span class="conn-dot"><span class="conn-dot-circle" style="background:${color}"></span><span>${ms}ms</span></span>`);
+            updateLoginDot('var(--success)', `${ms}ms`);
             scheduleLatencyCheck(LATENCY_ONLINE_MS);
         } catch (e) {
             if (e.name !== 'AbortError') {
                 store.set('conn.html', `<span class="conn-dot"><span class="conn-dot-circle" style="background:var(--danger)"></span><span>offline</span></span>`);
+                updateLoginDot('var(--danger)', 'offline');
                 if (banner) { banner.style.display = 'block'; banner.classList.add('active'); }
                 scheduleLatencyCheck(LATENCY_OFFLINE_MS);
             } else {
@@ -515,12 +518,19 @@
     });
     window.addEventListener('online', checkLatency);
 
+    function updateLoginDot(color, label) {
+        const circle = document.getElementById('loginServerDotCircle');
+        const lbl    = document.getElementById('loginServerDotLabel');
+        if (circle) circle.style.background = color;
+        if (lbl)    lbl.textContent = label;
+    }
+
     function startLatencyChecks() {
         if (window._latencyStarted) return;
         window._latencyStarted = true;
         checkLatency();
     }
-    if (isLoggedIn()) startLatencyChecks();
+    startLatencyChecks();
 
     // THE PERFORMANCE MODAL IMPLEMENTATION
     function _initPerfCharts() {
