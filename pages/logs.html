@@ -8,8 +8,11 @@
         </div>
         <span class="divider-v hide-mobile"></span>
         <select id="logsTailSelect" style="width:auto;margin:0;">
-            <option value="100">100 Lines</option>
-            <option value="500">500 Lines</option>
+            <option value="50">Last 50</option>
+            <option value="100">Last 100</option>
+            <option value="250">Last 250</option>
+            <option value="500">Last 500</option>
+            <option value="1000">Last 1000</option>
         </select>
         <button class="btn" id="logsExpandAllBtn">Expand All</button>
         <button class="btn" id="logsCollapseAllBtn">Collapse All</button>
@@ -87,24 +90,17 @@
             let extraJson = '';
             if (Object.keys(fields).length > 0 && window.app?.syntaxHighlight) {
                 const openAttr = isAllExpanded ? 'open' : '';
-                extraJson = `
-            <details class="log-details" style="margin-top: 4px;" ${openAttr}>
-                <summary style="font-size: 10px; color: var(--accent); cursor: pointer; user-select: none; outline: none; display: inline-block; font-weight: 500;">
-                    {...} JSON Payload
-                </summary>
-                ${window.app.syntaxHighlight(fields)}
-            </details>`;
+                extraJson = ` <details class="log-details" style="display:inline-block;vertical-align:top;" ${openAttr}><summary style="font-size:10px;color:var(--accent);cursor:pointer;user-select:none;outline:none;display:inline;font-weight:500;">{…}</summary>${window.app.syntaxHighlight(fields)}</details>`;
             }
 
             const color = lvl === 'ERROR' ? 'var(--danger)' : lvl === 'WARN' ? 'var(--warning)' : '#aaa';
 
-            return `<div class="log-entry" style="display:block; border-bottom: 1px solid var(--border); padding-bottom: 8px;">
-            <div style="display:flex;gap:8px;">
+            return `<div class="log-entry" style="border-bottom:1px solid var(--border);padding:3px 0 5px;">
+            <div style="display:flex;gap:8px;align-items:baseline;">
                 <div class="log-ts">${ts}</div>
-                <div class="log-lvl" style="color:${color}; font-weight:bold; width:45px;">${lvl}</div>
-                <div class="log-msg">${full}</div>
+                <div class="log-lvl" style="color:${color};font-weight:bold;width:45px;flex-shrink:0;">${lvl}</div>
+                <div class="log-msg">${full}${extraJson}</div>
             </div>
-            ${extraJson}
         </div>`;
         }).join('');
     }

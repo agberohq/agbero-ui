@@ -1,22 +1,60 @@
 <div class="page active">
 
-    <!-- Hero Section -->
-    <div class="hero">
-        <h1 id="heroTitle">System Status</h1>
-        <p id="heroSub">Monitoring <span id="heroHostCount">0</span> hosts and <span id="heroRouteCount">0</span> routes.</p>
+    <!-- Welcome bar -->
+    <div class="welcome-bar" style="margin-bottom:24px;">
+        <div class="welcome-brand">Welcome, <span id="welcomeName">ADMIN</span></div>
+        <div class="welcome-meta" id="welcomeMeta">—</div>
+    </div>
 
-        <div class="health-bar-container">
-            <div class="health-bar" id="globalHealthBar">
-                <div class="hb-seg hb-ok" style="width: 100%"></div>
-                <div class="hb-seg hb-err" style="width: 0%"></div>
+    <!-- Ops briefing: certs · top hosts · error hotspots -->
+    <div class="briefing-grid">
+
+        <div class="brief-panel">
+            <div class="brief-panel-header">
+                <span class="brief-panel-title">TLS Certificates</span>
+                <span id="certSummary" style="font-size:10px;color:var(--text-mute);font-family:var(--font-mono);"></span>
             </div>
-            <div class="health-legend">
-                <span><span class="dot ok"></span> Success</span>
-                <span class="error-rate" id="errorRateText">0.0% errors</span>
+            <div class="brief-panel-body" id="certBriefing">
+                <div class="brief-empty">No certificate data yet</div>
             </div>
         </div>
-        <div class="last-updated" id="lastUpdatedText">Updated just now</div>
+
+        <div class="brief-panel">
+            <div class="brief-panel-header">
+                <span class="brief-panel-title">Top Hosts by Traffic</span>
+                <span id="hostBriefSub" style="font-size:10px;color:var(--text-mute);font-family:var(--font-mono);"></span>
+            </div>
+            <div class="brief-panel-body" id="hostBriefing">
+                <div class="brief-empty">Waiting for traffic data</div>
+            </div>
+        </div>
+
+        <div class="brief-panel">
+            <div class="brief-panel-header">
+                <span class="brief-panel-title">Error Hotspots</span>
+                <span id="errorBriefSub" style="font-size:10px;color:var(--text-mute);font-family:var(--font-mono);"></span>
+            </div>
+            <div class="brief-panel-body" id="errorBriefing">
+                <div class="brief-empty">No errors recorded</div>
+            </div>
+        </div>
+
     </div>
+
+    <!-- Health bar -->
+    <div class="health-row" style="margin-bottom:12px;">
+        <div class="health-bar" id="globalHealthBar">
+            <div class="hb-seg hb-ok" style="width:100%"></div>
+            <div class="hb-seg hb-err" style="width:0%"></div>
+        </div>
+        <div class="health-meta">
+            <span><span class="dot ok"></span> Success</span>
+            <span class="error-rate" id="errorRateText">0.0% errors</span>
+            <span class="last-updated" id="lastUpdatedText">—</span>
+        </div>
+    </div>
+
+     <div style="display: block; height: 30px"></div>
 
     <!-- Response time chart -->
     <div class="chart-wrapper">
@@ -30,13 +68,13 @@
 </div>
 
 <script type="module">
-    import { component, listen, chart, on } from '../lib/oja.full.esm.js';
-    import { store, getCreds } from '../js/store.js';
-    import { fetchUptime } from '../js/api.js';
+    import { component, listen, emit, chart, on } from '../lib/oja.full.esm.js';
+    import { store } from '../js/store.js';
 
     let mainChart = null;
     let unsub     = null;
-    let pollTimer = null;
+
+    // ── Helpers ────────────────────────────────────────────────────────────────
 
     function buildTimeGradient(n) {
         return Array.from({ length: n }, (_, i) => {
@@ -45,135 +83,230 @@
         });
     }
 
-    function renderHealth(total, errors) {
-        const el = document.getElementById('globalHealthBar');
-        if (!el) return;
-        const errPct = total > 0 ? (errors / total) * 100 : 0;
-        const succPct = Math.max(0, 100 - errPct);
-        el.innerHTML = `<div class="hb-seg hb-ok" style="width: ${succPct}%"></div><div class="hb-seg hb-err" style="width: ${errPct}%"></div>`;
+    function fmtReqs(n) {
+        if (!n) return '0';
+        if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + 'M';
+        if (n >= 1_000)     return (n / 1_000).toFixed(1) + 'k';
+        return String(n);
     }
 
-    function refreshChart() {
-        const history = store.get('metricsHistory') || { all: [], http: [], tcp:[] };
-        const key  = store.get('activeChart') || 'all';
-        const vals = history[key] ||[];
+    function daysColor(d) {
+        if (d < 0)  return 'var(--danger)';
+        if (d < 7)  return 'var(--warning)';
+        if (d < 30) return 'var(--info)';
+        return 'var(--success)';
+    }
 
-        // Prevent D3 crash if array is empty
+    // ── Panel renderers ────────────────────────────────────────────────────────
+
+    function renderCerts(certs) {
+        const el = document.getElementById('certBriefing');
+        const sum = document.getElementById('certSummary');
+        if (!el) return;
+
+        if (!certs || !certs.length) {
+            el.innerHTML = '<div class="brief-empty">No certificates tracked</div>';
+            if (sum) sum.textContent = '';
+            return;
+        }
+
+        // Sort: expired first, then soonest expiry
+        const sorted = [...certs].sort((a, b) => a.daysLeft - b.daysLeft);
+        const expiring = sorted.filter(c => c.daysLeft < 30).length;
+        if (sum) sum.textContent = expiring > 0 ? `${expiring} expiring soon` : `${certs.length} managed`;
+
+        el.innerHTML = sorted.slice(0, 5).map(c => {
+            const color = daysColor(c.daysLeft);
+            const label = c.daysLeft < 0 ? 'Expired' : c.daysLeft === 0 ? 'Today' : `${c.daysLeft}d`;
+            return `<div class="brief-row">
+                <span class="dot" style="background:${color};flex-shrink:0;"></span>
+                <span class="brief-row-main">${c.host}</span>
+                <span class="brief-row-sub" style="color:${color};font-family:var(--font-mono);">${label}</span>
+            </div>`;
+        }).join('');
+    }
+
+    function renderTopHosts(hosts) {
+        const el  = document.getElementById('hostBriefing');
+        const sub = document.getElementById('hostBriefSub');
+        if (!el) return;
+
+        const entries = Object.entries(hosts || {})
+            .map(([name, h]) => ({ name, reqs: h.total_reqs || 0 }))
+            .filter(h => h.reqs > 0)
+            .sort((a, b) => b.reqs - a.reqs);
+
+        if (sub) sub.textContent = entries.length ? `${entries.length} hosts` : '';
+
+        if (!entries.length) {
+            el.innerHTML = '<div class="brief-empty">No traffic yet</div>';
+            return;
+        }
+
+        const maxReqs = entries[0].reqs;
+        el.innerHTML = entries.slice(0, 5).map((h, i) => {
+            const pct  = maxReqs > 0 ? Math.round((h.reqs / maxReqs) * 100) : 0;
+            const rank = i === 0 ? 'var(--accent)' : i === 1 ? 'var(--info)' : 'var(--border)';
+            return `<div class="brief-row" data-hostname="${h.name}"
+                style="flex-direction:column;align-items:stretch;gap:4px;cursor:pointer;">
+                <div style="display:flex;align-items:center;gap:8px;">
+                    <span class="brief-row-main">${h.name}</span>
+                    <span class="brief-row-sub" style="font-family:var(--font-mono);">${fmtReqs(h.reqs)}</span>
+                </div>
+                <div style="height:2px;background:var(--border);border-radius:1px;overflow:hidden;">
+                    <div style="width:${pct}%;height:100%;background:${rank};transition:width 0.4s;"></div>
+                </div>
+            </div>`;
+        }).join('');
+    }
+
+    function renderErrorHotspots(hosts) {
+        const el  = document.getElementById('errorBriefing');
+        const sub = document.getElementById('errorBriefSub');
+        if (!el) return;
+
+        // Collect per-backend failure counts across all hosts/routes
+        const hotspots = [];
+        for (const [hostname, h] of Object.entries(hosts || {})) {
+            for (const route of (h.routes || [])) {
+                for (const b of (route.backends || [])) {
+                    if ((b.failures || 0) > 0) {
+                        hotspots.push({
+                            url:      b.url || '?',
+                            host:     hostname,
+                            failures: b.failures,
+                            alive:    b.alive,
+                        });
+                    }
+                }
+            }
+        }
+        hotspots.sort((a, b) => b.failures - a.failures);
+
+        const totalErrors = hotspots.reduce((s, h) => s + h.failures, 0);
+        if (sub) sub.textContent = totalErrors > 0 ? `${fmtReqs(totalErrors)} total` : '';
+
+        if (!hotspots.length) {
+            el.innerHTML = '<div class="brief-empty" style="color:var(--success);">✓ No errors recorded</div>';
+            return;
+        }
+
+        el.innerHTML = hotspots.slice(0, 5).map(h => {
+            const dot = h.alive ? 'warn' : 'down';
+            return `<div class="brief-row">
+                <span class="dot ${dot}" style="flex-shrink:0;"></span>
+                <span class="brief-row-main">${h.url}</span>
+                <span class="brief-row-sub" style="color:var(--danger);font-family:var(--font-mono);">${fmtReqs(h.failures)} fail</span>
+            </div>`;
+        }).join('');
+    }
+
+    // ── Full update ────────────────────────────────────────────────────────────
+
+    function processMetrics(payload) {
+        const hosts = payload.hosts || {};
+
+        // Welcome meta: version + host count + route count
+        const version = store.get('sys.version') || '';
+        let hc = 0, rc = 0, tReqs = 0, tErrs = 0;
+        for (const h of Object.values(hosts)) {
+            hc++;
+            rc += (h.routes || []).length + (h.proxies || []).length;
+            tReqs += h.total_reqs || 0;
+            (h.routes  || []).forEach(r => (r.backends || []).forEach(b => tErrs += b.failures || 0));
+            (h.proxies || []).forEach(p => (p.backends || []).forEach(b => tErrs += b.failures || 0));
+        }
+
+        const metaEl = document.getElementById('welcomeMeta');
+        if (metaEl) metaEl.textContent = [
+            version,
+            `${hc} host${hc !== 1 ? 's' : ''}`,
+            `${rc} route${rc !== 1 ? 's' : ''}`,
+        ].filter(Boolean).join(' · ');
+
+        // Health bar
+        const bar = document.getElementById('globalHealthBar');
+        if (bar) {
+            const errPct  = tReqs > 0 ? (tErrs / tReqs) * 100 : 0;
+            const succPct = Math.max(0, 100 - errPct);
+            bar.innerHTML = `<div class="hb-seg hb-ok" style="width:${succPct}%"></div><div class="hb-seg hb-err" style="width:${errPct}%"></div>`;
+            const errText = document.getElementById('errorRateText');
+            if (errText) errText.textContent = `${tReqs > 0 ? ((tErrs / tReqs) * 100).toFixed(1) : '0.0'}% errors`;
+        }
+
+        const timeEl = document.getElementById('lastUpdatedText');
+        if (timeEl) timeEl.textContent = 'Updated ' + new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+
+        // Three panels — all different data from the footer
+        renderCerts(store.get('certificates') || []);
+        renderTopHosts(hosts);
+        renderErrorHotspots(hosts);
+
+        // Chart
+        refreshChart(payload.history);
+    }
+
+    function refreshChart(history) {
+        const h   = history || store.get('metricsHistory') || { all: [], http: [], tcp: [] };
+        const key  = store.get('activeChart') || 'all';
+        const vals = [...(h[key] || [])];
         if (vals.length === 0) vals.push(0);
 
         if (!mainChart) {
             mainChart = chart.bar('#responseGraph', vals, {
-                unit:   'ms',
-                warnAt: 500,
+                unit: 'ms', warnAt: 500,
                 colors: buildTimeGradient(vals.length),
-                label:  key.toUpperCase(),
+                label: key.toUpperCase(),
             });
         } else {
-            mainChart.update(vals, {
-                colors: buildTimeGradient(vals.length),
-                label:  key.toUpperCase(),
-            });
+            mainChart.update(vals, { colors: buildTimeGradient(vals.length), label: key.toUpperCase() });
         }
     }
 
-    function processSnapshot(snapshot) {
-        if (!snapshot) return;
+    // ── Boot ───────────────────────────────────────────────────────────────────
 
-        // 1. Safely accumulate D3 History Array
-        const history = store.get('metricsHistory') || { all: [], http: [], tcp:[] };
-        if (snapshot.global) {
-            history.all.push(snapshot.global.avg_p99_ms || 0);
-            history.http.push(snapshot.global.http_p99_ms || 0);
-            history.tcp.push(snapshot.global.tcp_p99_ms || 0);
+    // Welcome: extract username from JWT user claim
+    (function setWelcomeName() {
+        const el = document.getElementById('welcomeName');
+        if (!el) return;
+        try {
+            const token = localStorage.getItem('ag_auth_token');
+            if (!token) { el.textContent = 'ADMIN'; return; }
+            const payload = JSON.parse(atob(token.split('.')[1]));
+            el.textContent = payload.user || 'ADMIN';
+        } catch { el.textContent = 'ADMIN'; }
+    })();
 
-            if (history.all.length > 60) {
-                history.all.shift(); history.http.shift(); history.tcp.shift();
-            }
-            store.set('metricsHistory', history);
-        }
+    // Paint certs immediately from store (populated at boot by loadConfigData)
+    renderCerts(store.get('certificates') || []);
 
-        // 2. Aggregate counts
-        let hc = 0, rc = 0, tReqs = 0, tErrs = 0;
-        if (snapshot.hosts) {
-            for (const h of Object.values(snapshot.hosts)) {
-                hc++;
-                rc += (h.routes ||[]).length + (h.proxies ||[]).length;
-                tReqs += h.total_reqs || 0;
-                (h.routes || []).forEach(r => (r.backends ||[]).forEach(b => tErrs += b.failures || 0));
-                (h.proxies ||[]).forEach(p => (p.backends ||[]).forEach(b => tErrs += b.failures || 0));
-            }
-        }
+    // Paint chart from cached history
+    const cachedHistory = store.get('metricsHistory');
+    if (cachedHistory) refreshChart(cachedHistory);
 
-        // Update Store
-        store.set('stats.total', tReqs);
-        store.set('stats.errors', tErrs);
-        store.set('stats.hostCount', hc);
-        store.set('stats.routeCount', rc);
+    // Subscribe to global metrics — no independent poll
+    unsub = listen('metrics:updated', processMetrics);
 
-        // 3. Update DOM Elements instantly
-        const hEl = document.getElementById('heroHostCount');
-        if (hEl) hEl.innerText = hc;
+    // Top host click — navigate to hosts page with filter
+    on('#hostBriefing', 'click', (e) => {
+        const row = e.target.closest('[data-hostname]');
+        if (!row) return;
+        emit('hosts:search', { term: row.dataset.hostname });
+        window._router?.navigate('/hosts');
+    });
 
-        const rEl = document.getElementById('heroRouteCount');
-        if (rEl) rEl.innerText = rc;
-
-        const errPct = tReqs > 0 ? ((tErrs / tReqs) * 100).toFixed(1) : 0;
-        const errText = document.getElementById('errorRateText');
-        if (errText) errText.innerText = `${errPct}% errors`;
-
-        renderHealth(tReqs, tErrs);
-
-        const timeEl = document.getElementById('lastUpdatedText');
-        if (timeEl) timeEl.innerText = 'Updated ' + new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-
+    // Chart tabs
+    on('.chart-tab', 'click', (e, tab) => {
+        document.querySelectorAll('.chart-tab').forEach(t => t.classList.remove('active'));
+        tab.classList.add('active');
+        store.set('activeChart', tab.dataset.type);
         refreshChart();
-    }
-
-    async function tick() {
-        const data = await fetchUptime(getCreds());
-        if (data && !data.__offline) {
-            store.set('lastUptime', data);
-            processSnapshot(data);
-        }
-    }
-
-    // =========================================================================
-    // EXECUTE IMMEDIATELY (Bypassing component.onMount timing issues)
-    // =========================================================================
-
-    // 1. Paint immediately from cache to prevent blank flash
-    const cached = store.get('lastUptime');
-    if (cached) processSnapshot(cached);
-
-    // 2. Fetch fresh data immediately
-    tick();
-
-    // 3. Start local poller for the graph
-    pollTimer = setInterval(tick, 5000);
-
-    // 4. Also listen to global metrics if they arrive from elsewhere
-    unsub = listen('metrics:updated', (payload) => {
-        const snap = payload.snapshot || payload;
-        processSnapshot(snap);
     });
 
-    // Setup Chart Tabs
-    document.querySelectorAll('.chart-tab').forEach(tab => {
-        on(tab, 'click', () => {
-            document.querySelectorAll('.chart-tab').forEach(t => t.classList.remove('active'));
-            tab.classList.add('active');
-            store.set('activeChart', tab.dataset.type);
-            refreshChart();
-        });
-    });
-
-    // Cleanup on navigation
     component.onUnmount(() => {
         if (unsub) unsub();
-        if (pollTimer) clearInterval(pollTimer);
         if (mainChart) mainChart.destroy?.();
         mainChart = null;
         unsub = null;
-        pollTimer = null;
     });
 </script>

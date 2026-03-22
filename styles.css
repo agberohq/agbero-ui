@@ -36,7 +36,7 @@
     --bg:       #0d0d0d;
     --fg:       #f0f0f0;
     --text-main:#d4d4d4;
-    --text-mute:#555555;
+    --text-mute:#777777;
     --border:   #1f1f1f;
     --panel-bg: #161616;
     --hover-bg: #1a1a1a;
@@ -963,8 +963,8 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
     height: 350px;
     font-family: var(--font-mono);
     font-size: 12px;
-    background: #111;
-    color: #eee;
+    background: var(--panel-bg);
+    color: var(--fg);
     padding: 15px;
     border-radius: 6px;
     border: 1px solid var(--border);
@@ -973,6 +973,187 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
 }
 .json-editor:focus { border-color: var(--accent); }
 
+/* ─── Syntax highlight box (JSON viewer) ─────────────────────────────────── */
+.syntax-box {
+    margin: 4px 0 0 0; padding: 10px; background: var(--panel-bg); border-radius: 6px;
+    font-size: 11px; border: 1px solid var(--border); overflow-x: auto;
+    white-space: pre-wrap; font-family: var(--font-mono); color: var(--fg);
+}
+
+/* ─── Dashboard stat grid (replaces hero h1) ─────────────────────────────── */
+.stat-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 10px;
+    margin-bottom: 14px;
+}
+.stat-card {
+    background: var(--panel-bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 14px 16px;
+}
+.stat-label {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.7px;
+    color: var(--text-mute);
+    margin-bottom: 6px;
+}
+.stat-num {
+    font-family: var(--font-mono);
+    font-size: 20px;
+    font-weight: 500;
+    color: var(--fg);
+    line-height: 1;
+}
+.hero-sub {
+    font-size: 12px;
+    color: var(--text-mute);
+    margin: 0 0 16px;
+    font-family: var(--font-mono);
+}
+
+/* ─── Dashboard briefing panels ──────────────────────────────────────────── */
+.briefing-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+    margin-bottom: 20px;
+}
+.brief-panel {
+    background: var(--panel-bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    overflow: hidden;
+}
+.brief-panel-header {
+    padding: 10px 14px 8px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+.brief-panel-title {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.7px;
+    color: var(--text-mute);
+    font-weight: 500;
+}
+.brief-panel-body { padding: 0; }
+.brief-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 14px;
+    border-bottom: 1px solid var(--border);
+    font-size: 12px;
+    transition: background 0.1s;
+}
+.brief-row:last-child { border-bottom: none; }
+.brief-row:hover { background: var(--hover-bg); }
+.brief-row-main { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--font-mono); color: var(--fg); }
+.brief-row-sub  { font-size: 10px; color: var(--text-mute); white-space: nowrap; }
+.brief-empty    { padding: 20px 14px; font-size: 11px; color: var(--text-mute); text-align: center; }
+.welcome-bar {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    margin-bottom: 16px;
+}
+.welcome-brand {
+    font-size: 20px;
+    font-weight: 400;
+    letter-spacing: 0.2px;
+    color: var(--text-mute);
+}
+.welcome-brand span {
+    color: var(--fg);
+    font-weight: 500;
+}
+.welcome-meta { font-size: 11px; color: var(--text-mute); font-family: var(--font-mono); }
+.conn-dot {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+.conn-dot-circle {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+
+/* ─── Chart wrapper layout fix ───────────────────────────────────────────── */
+.chart-wrapper {
+    display: flex;
+    flex-direction: column;
+    padding: 15px 15px 5px 15px !important;
+}
+.chart-controls {
+    position: relative !important;
+    top: 0 !important; right: 0 !important;
+    margin-bottom: 10px !important;
+    display: flex;
+    justify-content: flex-end;
+}
+#responseGraph { flex: 1; min-height: 0; }
+
+
+/* ─── Pagination ─────────────────────────────────────────────────────────── */
+.pg-controls {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 10px 0;
+    flex-wrap: wrap;
+}
+.pg-info {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--text-mute);
+    white-space: nowrap;
+}
+.pg-buttons {
+    display: flex;
+    align-items: center;
+    gap: 3px;
+    flex-wrap: wrap;
+}
+.pg-btn {
+    min-width: 28px;
+    height: 28px;
+    padding: 0 6px;
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    background: var(--panel-bg);
+    color: var(--text-main);
+    cursor: pointer;
+    font-size: 12px;
+    font-family: var(--font-sans);
+    line-height: 1;
+    transition: background 0.1s, border-color 0.1s;
+    white-space: nowrap;
+}
+.pg-btn:hover:not(:disabled) { background: var(--hover-bg); border-color: var(--accent); }
+.pg-btn:disabled              { opacity: 0.35; cursor: not-allowed; }
+.pg-btn.pg-active             { background: var(--accent); border-color: var(--accent); color: #fff; }
+.pg-btn.pg-nav                { color: var(--text-mute); font-size: 14px; }
+.pg-ellipsis                  { padding: 0 4px; color: var(--text-mute); font-size: 12px; line-height: 28px; }
+.pg-size {
+    height: 28px;
+    padding: 0 8px;
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    background: var(--panel-bg);
+    color: var(--text-main);
+    font-family: var(--font-sans);
+    font-size: 12px;
+    cursor: pointer;
+    outline: none;
+}
+.pg-size:focus { border-color: var(--accent); }
 
 /* ─── Responsive ─────────────────────────────────────────────────────────── */
 @media (max-width: 768px) {
@@ -990,6 +1171,8 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
     .stat-item       { min-width: 80px; flex-shrink: 0; }
     .stat-item span  { font-size: 14px; }
     .brand           { font-size: 14px; }
+    .stat-grid       { grid-template-columns: repeat(2, 1fr); }
+    .briefing-grid   { grid-template-columns: 1fr; }
 }
 @media (max-width: 480px) {
     .config-metrics-grid { grid-template-columns: repeat(2, 1fr); }

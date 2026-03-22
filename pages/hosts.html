@@ -8,9 +8,9 @@
 </div>
 
 <script type="module">
-    import { component, on, emit, listen, modal } from '../lib/oja.full.esm.js';
+    import { component, on, emit, listen, modal, ui, clipboard, notify } from '../lib/oja.full.esm.js';
     import { store, getCreds } from '../js/store.js';
-    import { fetchUptime, parseCertificates, fetchConfig, fmtNum, addHost, deleteHost } from '../js/api.js';
+    import { fetchUptime, fmtNum, addHost, deleteHost } from '../js/api.js';
 
     const isActive = (v) => {
         if (v === undefined || v === null) return false;
@@ -54,6 +54,9 @@
                 if (cert.daysLeft < 7) { tlsClass = cert.daysLeft < 0 ? 'error' : 'warning'; tlsText = cert.daysLeft < 0 ? 'Expired' : `${cert.daysLeft}d`; }
             }
 
+            // Protected: any route with protected = "on" blocks host deletion
+            const isProtected = cfgRoutes.some(r => r.protected === 'on');
+
             hostHtml += `<div class="host-row" data-hostname="${hostname}">
             <div class="host-header" data-action="open-perf" data-hostname="${hostname}">
                 <div>
@@ -66,7 +69,10 @@
                 <div style="display:flex;align-items:center;gap:8px;">
                     <span class="host-perf-hint">Performance &nearr;</span>
                     <button class="btn small" data-action="edit-json" data-hostname="${hostname}" style="font-size:10px;padding:2px 7px;">Edit JSON</button>
-                    <button class="btn small" data-action="delete-host" data-hostname="${hostname}" style="font-size:10px;padding:2px 7px;color:var(--danger);border-color:var(--danger);">Delete</button>
+                    ${isProtected
+                ? `<button class="btn small" disabled title="Cannot delete — contains protected routes" style="font-size:10px;padding:2px 7px;opacity:0.4;cursor:not-allowed;">Delete</button>`
+                : `<button class="btn small" data-action="delete-host" data-hostname="${hostname}" style="font-size:10px;padding:2px 7px;color:var(--danger);border-color:var(--danger);">Delete</button>`
+            }
                 </div>
             </div>`;
 
@@ -101,6 +107,11 @@
                 if (isActive(cfgRoute.cors?.enabled)) t.push('<span class="badge">CORS</span>');
                 if (isActive(cfgRoute.compression_config?.enabled)) t.push('<span class="badge">GZIP</span>');
                 if (isActive(cfgRoute.firewall?.enabled) || isActive(cfgRoute.firewall?.status)) t.push('<span class="badge danger">FIREWALL</span>');
+                if (cfgRoute.allowed_ips?.length) t.push('<span class="badge warn">IP FILTER</span>');
+                if (isActive(cfgRoute.fallback?.enabled)) t.push('<span class="badge">FALLBACK</span>');
+                if (cfgRoute.rewrites?.length) t.push(`<span class="badge">REWRITE (${cfgRoute.rewrites.length})</span>`);
+                if (cfgRoute.strip_prefixes?.length) t.push(`<span class="badge">STRIP (${cfgRoute.strip_prefixes.length})</span>`);
+                if (cfgRoute.env && Object.keys(cfgRoute.env).length) t.push('<span class="badge">ENV</span>');
 
                 let auths =[];
                 if (isActive(cfgRoute.basic_auth?.enabled)) auths.push('BASIC');
@@ -124,10 +135,16 @@
                         if (url && url.toLowerCase().includes(term)) hostHasMatch = true;
                         const w = cfgB.weight !== undefined ? cfgB.weight : (b.weight || 1);
                         const { cls, title } = healthDot(b, !!statBEs[bIdx]);
-                        const p99 = b.latency_us?.p99 ? (b.latency_us.p99 / 1000).toFixed(0) + 'ms' : '—';
+                        const p99   = b.latency_us?.p99 ? (b.latency_us.p99 / 1000).toFixed(0) + 'ms' : '—';
+                        const score = b.health?.score ?? '';
+                        const trendVal = b.health?.trend ?? 0;
+                        const trendGlyph = trendVal > 0 ? '↑' : trendVal < 0 ? '↓' : '→';
+                        const trendColor = trendVal > 0 ? 'var(--success)' : trendVal < 0 ? 'var(--danger)' : 'var(--text-mute)';
                         backendHtml += `<div class="backend-row ${cls === 'down' ? 'down' : ''}">
                         <span class="dot ${cls}" title="${title}"></span>
+                        <span style="font-size:10px;color:${trendColor};flex-shrink:0;">${trendGlyph}</span>
                         <span class="be-url copyable" data-action="copy-url" data-url="${url}">${url}${b.in_flight > 0 ? ` <span class="badge warn">⚡${b.in_flight}</span>` : ''}</span>
+                        ${score !== '' ? `<span class="be-stat" title="Health score">${score}</span>` : ''}
                         <span class="be-stat">W:${w}</span>
                         <span class="be-stat">${p99}</span>
                         <span class="be-stat">${fmtNum(b.total_reqs || 0)}</span>
@@ -188,13 +205,6 @@
         const data = await fetchUptime(getCreds());
         if (!data || data.__offline || data.__unauthorized) return;
         store.set('hostsData', { stats: data.hosts || {} });
-
-        fetchConfig(getCreds()).then(config => {
-            if (config && !config.__offline) {
-                store.set('lastConfig', config);
-                store.set('certificates', parseCertificates(config.hosts));
-            }
-        }).catch(() => {});
         syncList();
     }
 
@@ -242,7 +252,7 @@
 
     on('[data-action="copy-url"]', 'click', (e, btn) => {
         e.stopPropagation();
-        navigator.clipboard?.writeText(btn.dataset.url);
+        clipboard.copy(btn.dataset.url).then(() => notify.show('Copied', 'success')).catch(() => {});
     });
 
     on('[data-action="edit-json"]', 'click', (e, btn) => {
@@ -261,18 +271,22 @@
     on('#saveHostJsonBtn', 'click', async (e, btn) => {
         const rawJson = document.getElementById('editHostJsonTextarea').value;
         const errEl = document.getElementById('editHostError'); errEl.style.display = 'none';
+        let parsedConfig;
         try {
-            // Use Function constructor for loose JS object parsing (allows unquoted keys, trailing commas)
-            const parsedConfig = (new Function('return ' + rawJson))();
-            btn.disabled = true; btn.innerText = 'Saving...';
+            parsedConfig = JSON.parse(rawJson);
+        } catch (err) {
+            errEl.innerText = 'Invalid JSON: ' + err.message; errEl.style.display = 'block'; return;
+        }
+        ui.btn.loading(btn, 'Saving…');
+        try {
             const result = await addHost(getCreds(), btn.dataset.hostname, parsedConfig);
             if (result && result.error) throw new Error(result.error);
-            if (modal && modal.closeAll) modal.closeAll();
+            ui.btn.done(btn, 'Saved ✓');
+            setTimeout(() => { if (modal && modal.closeAll) modal.closeAll(); }, 800);
             refresh();
         } catch (err) {
+            ui.btn.reset(btn);
             errEl.innerText = err.message; errEl.style.display = 'block';
-        } finally {
-            btn.disabled = false; btn.innerText = 'Save Configuration';
         }
     });
 

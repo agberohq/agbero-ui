@@ -4,7 +4,7 @@
  * Data: lastConfig.hosts[host] for config, hostsData.stats[host] for live data.
  */
 
-import { listen, emit } from '../lib/oja.full.esm.js';
+import { listen, emit, clipboard, notify } from '../lib/oja.full.esm.js';
 import { store }        from './store.js';
 import { fmtNum }       from './api.js';
 
@@ -64,9 +64,8 @@ listen('drawer:open-route', ({ host, idx, type }) => {
         body.querySelectorAll('[data-action="copy-url"]').forEach(btn => {
             btn.addEventListener('click', e => {
                 e.stopPropagation();
-                navigator.clipboard?.writeText(btn.dataset.url).then(() => {
-                    const old = btn.innerText; btn.innerText = 'Copied!';
-                    setTimeout(() => btn.innerText = old, 2000);
+                clipboard.copy(btn.dataset.url).then(() => {
+                    notify.show('Copied', 'success');
                 }).catch(() => {});
             });
         });
@@ -254,7 +253,7 @@ function buildRouteHTML(hostname, item, itemStats, type, certificates, routeIdx)
             if (item.headers?.enabled === 'on') {
                 const rh = item.headers.request || {}, rs = item.headers.response || {};
                 const n = [rh.set, rh.add, rs.set, rs.add].filter(Boolean).reduce((a, o) => a + Object.keys(o).length, 0)
-                        + (rh.remove?.length || 0) + (rs.remove?.length || 0);
+                    + (rh.remove?.length || 0) + (rs.remove?.length || 0);
                 if (n) featHtml += `<div class="kv-item"><label>Header Rules</label><div><span class="badge info">${n} modifications</span></div></div>`;
             }
             if (featHtml) html += `<div class="detail-section"><div class="detail-title">⚙️ HTTP Features</div><div class="kv-grid">${featHtml}</div></div>`;
@@ -266,15 +265,15 @@ function buildRouteHTML(hostname, item, itemStats, type, certificates, routeIdx)
     if (hostCerts.length) {
         html += `<div class="detail-section"><div class="detail-title">🔐 TLS Certificates</div><div class="cert-grid">
             ${hostCerts.map(cert => {
-                let cls = 'success', txt = `${cert.daysLeft}d`;
-                if (cert.daysLeft < 0) { cls = 'error'; txt = 'Expired'; }
-                else if (cert.daysLeft < 7) { cls = 'warning'; txt = `${cert.daysLeft}d left`; }
-                return `<div class="cert-card">
+            let cls = 'success', txt = `${cert.daysLeft}d`;
+            if (cert.daysLeft < 0) { cls = 'error'; txt = 'Expired'; }
+            else if (cert.daysLeft < 7) { cls = 'warning'; txt = `${cert.daysLeft}d left`; }
+            return `<div class="cert-card">
                     <div class="cert-domain">${cert.host}</div>
                     <div class="cert-expiry"><span>${cert.issuer || "Let's Encrypt"}</span><span class="badge ${cls}">${txt}</span></div>
                     <div style="font-size:9px;color:var(--text-mute);margin-top:4px;">${new Date(cert.expiry).toLocaleDateString()}</div>
                 </div>`;
-            }).join('')}
+        }).join('')}
         </div></div>`;
     }
 

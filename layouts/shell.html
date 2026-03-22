@@ -1,34 +1,3 @@
-<style>
-    :root { --text-main: #222222; --text-mute: #555555; }
-    [data-theme="dark"] { --text-main: #e0e0e0; --text-mute: #999999; }
-    .hero p { font-weight: 400 !important; }
-    .stat-item span { font-weight: 500 !important; }
-
-    /* 2. Chart Tabs Bottom Padding Fix */
-    .chart-wrapper { display: flex; flex-direction: column; padding: 15px 15px 5px 15px !important; }
-    .chart-controls { position: relative !important; top: 0 !important; right: 0 !important; margin-bottom: 15px !important; display: flex; justify-content: flex-end; }
-    #responseGraph { flex: 1; min-height: 0; }
-
-    /* 3. Theme-Aware JSON Editor & Syntax Highlighting */
-    .json-editor {
-        width: 100%; height: 350px; font-family: var(--font-mono); font-size: 12px;
-        background: var(--panel-bg); color: var(--fg); padding: 15px;
-        border-radius: 6px; border: 1px solid var(--border); resize: vertical; outline: none;
-    }
-    .json-editor:focus { border-color: var(--accent); }
-
-    .syntax-box {
-        margin: 4px 0 0 0; padding: 10px; background: var(--panel-bg); border-radius: 6px;
-        font-size: 11px; border: 1px solid var(--border); overflow-x: auto;
-        white-space: pre-wrap; font-family: var(--font-mono); color: var(--fg);
-    }
-    .json-key    { color: var(--info); font-weight: 600; }
-    .json-string { color: var(--success); }
-    .json-number { color: var(--warning); }
-    .json-boolean{ color: var(--danger); font-weight: bold; }
-    .json-null   { color: var(--text-mute); font-style: italic; }
-</style>
-
 <nav class="navbar">
     <div class="brand">AGBERO <span>ADMIN</span></div>
     <div class="menu">
@@ -134,8 +103,9 @@
                 <option value="3600">1 Hour</option>
                 <option value="86400">24 Hours</option>
             </select>
-            <button type="submit" class="primary">Block</button>
-            <button type="button" class="btn close-modal" style="margin-top:5px;">Cancel</button>
+            <div id="ruleError" style="color:var(--danger);font-size:11px;margin-bottom:8px;display:none;background:rgba(255,59,48,0.08);padding:8px;border-radius:4px;"></div>
+            <button type="submit" class="btn primary" style="width:100%;">Block</button>
+            <button type="button" class="btn close-modal" style="margin-top:5px;width:100%;">Cancel</button>
         </form>
     </div>
 </div>
@@ -164,25 +134,40 @@
             <label style="font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:var(--text-mute);">Route Path</label>
             <input type="text" id="ahPath" placeholder="/" value="/" required>
 
-            <div style="background: var(--hover-bg); padding:12px; border-radius:6px; margin:10px 0; border: 1px solid var(--border);">
-                <label style="font-size:10px;text-transform:uppercase;color:var(--text-main);font-weight:600;">1. Proxy to Backend</label>
-                <input type="url" id="ahBackend" placeholder="http://10.0.0.5:8080" style="margin-top:6px;">
-                <label style="font-size:10px;text-transform:uppercase;color:var(--text-mute);">Strategy</label>
+            <label style="font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:var(--text-mute);">Mode</label>
+            <select id="ahMode" style="margin-bottom:14px;">
+                <option value="proxy">Proxy to Backend</option>
+                <option value="static">Serve Static Files</option>
+            </select>
+
+            <div id="ahProxySection">
+                <label style="font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:var(--text-mute);">Backend URL</label>
+                <input type="text" id="ahBackend" placeholder="http://10.0.0.5:8080 or unix:/run/app.sock">
+                <label style="font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:var(--text-mute);">Strategy</label>
                 <select id="ahStrategy">
                     <option value="round_robin">Round Robin</option>
                     <option value="least_conn">Least Connections</option>
+                    <option value="least_response_time">Least Response Time</option>
+                    <option value="weighted_least_conn">Weighted Least Connections</option>
+                    <option value="ip_hash">IP Hash</option>
+                    <option value="url_hash">URL Hash</option>
+                    <option value="consistent_hash">Consistent Hash</option>
+                    <option value="sticky">Sticky</option>
+                    <option value="adaptive">Adaptive</option>
+                    <option value="power_of_two">Power of Two</option>
+                    <option value="random">Random</option>
                 </select>
-
-                <div style="text-align:center; font-size:11px; margin:10px 0; color:var(--text-mute); font-weight:bold;">— OR —</div>
-
-                <label style="font-size:10px;text-transform:uppercase;color:var(--text-main);font-weight:600;">2. Serve Static Files</label>
-                <input type="text" id="ahWebRoot" placeholder="/var/www/html" style="margin-top:6px;">
             </div>
 
-            <button type="submit" class="primary">Save Host</button>
-            <button type="button" class="btn close-modal" style="margin-top:5px;">Cancel</button>
+            <div id="ahStaticSection" style="display:none;">
+                <label style="font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:var(--text-mute);">Web Root</label>
+                <input type="text" id="ahWebRoot" placeholder="/var/www/html">
+            </div>
+
+            <div id="addHostError" style="color:var(--danger);font-size:11px;margin-bottom:8px;display:none;background:rgba(255,59,48,0.08);padding:8px;border-radius:4px;"></div>
+            <button type="submit" class="btn primary" style="width:100%;">Save Host</button>
+            <button type="button" class="btn close-modal" style="margin-top:5px;width:100%;">Cancel</button>
         </form>
-        <div id="addHostError" style="color:var(--danger);font-size:11px;margin-top:8px;display:none;"></div>
     </div>
 </div>
 
@@ -208,7 +193,7 @@
         <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px;">
             <div>
                 <h3 style="margin-bottom: 5px;">Edit Host: <span id="editHostTitle" class="mono"></span></h3>
-                <p style="font-size:11px;color:var(--text-mute);margin:0;">Supports relaxed syntax: unquoted keys and trailing commas are allowed.</p>
+                <p style="font-size:11px;color:var(--text-mute);margin:0;">Edit configuration as JSON. Saves immediately to disk and hot-reloads.</p>
             </div>
             <button id="formatHostJsonBtn" type="button" class="btn small" style="background:var(--hover-bg);">✨ Format</button>
         </div>
@@ -291,14 +276,9 @@
 </div>
 
 <script type="module">
-    import { modal, layout, emit, listen, chart, on, auth } from '../lib/oja.full.esm.js';
+    import { modal, layout, emit, listen, chart, on, auth, ui } from '../lib/oja.full.esm.js';
     import { store, getCreds, isLoggedIn, setCredentials, clearCredentials, getHost, setHost } from '../js/store.js';
     import { fetchTelemetry, login, addFirewallRule, broadcastClusterRoute, addHost, deleteHost } from '../js/api.js';
-
-    const LATENCY_INTERVAL_MS = 30000;
-    const MAX_LATENCY_GOOD    = 100;
-    const MAX_LATENCY_FAIR    = 300;
-    const MAX_LATENCY_POOR    = 1000;
     let _perfCharts = null;
 
     // JSON Syntax Highlighter wrapper (Outputs beautifully themed <pre> block)
@@ -375,51 +355,85 @@
     on('.modal-overlay', 'click', (e, overlay) => { if (e.target === overlay) modal.closeAll(); });
     on('.close-modal', 'click', () => modal.closeAll());
 
-    on('#ruleForm', 'submit', async (e, el) => {
+    on('#ruleForm', 'submit', async (e, form) => {
         e.preventDefault();
+        const errEl = document.getElementById('ruleError');
+        errEl.style.display = 'none';
+        const submitBtn = form.querySelector('[type="submit"]');
+        ui.btn.loading(submitBtn, 'Blocking…');
         try {
             await addFirewallRule(getCreds(), {
-                ip: el.querySelector('#fwIp').value.trim(), reason: el.querySelector('#fwReason').value.trim(),
-                path: el.querySelector('#fwPath').value.trim(), host: "",
-                duration_sec: parseInt(el.querySelector('#fwDuration').value, 10) || 0,
+                ip: form.querySelector('#fwIp').value.trim(),
+                reason: form.querySelector('#fwReason').value.trim(),
+                path: form.querySelector('#fwPath').value.trim(),
+                host: '',
+                duration_sec: parseInt(form.querySelector('#fwDuration').value, 10) || 0,
             });
-            modal.closeAll(); emit('firewall:refresh');
-        } catch(err) { alert("Failed to block IP: " + err.message); }
+            ui.btn.done(submitBtn, 'Blocked ✓');
+            setTimeout(() => modal.closeAll(), 800);
+            emit('firewall:refresh');
+        } catch(err) {
+            ui.btn.reset(submitBtn);
+            errEl.textContent = err.message || 'Failed to block IP.';
+            errEl.style.display = 'block';
+        }
+    });
+
+    // Add Host — mode toggle
+    on('#ahMode', 'change', (e, sel) => {
+        document.getElementById('ahProxySection').style.display = sel.value === 'proxy' ? '' : 'none';
+        document.getElementById('ahStaticSection').style.display = sel.value === 'static' ? '' : 'none';
     });
 
     on('#addHostForm', 'submit', async (e, form) => {
         e.preventDefault();
         const errEl = document.getElementById('addHostError'); errEl.style.display = 'none';
-        const domain = form.querySelector('#ahDomain').value.trim();
-        const path = form.querySelector('#ahPath').value.trim() || '/';
+        const domain  = form.querySelector('#ahDomain').value.trim();
+        const path    = form.querySelector('#ahPath').value.trim() || '/';
+        const mode    = form.querySelector('#ahMode').value;
         const backend = form.querySelector('#ahBackend').value.trim();
         const webRoot = form.querySelector('#ahWebRoot')?.value.trim();
 
-        if (!backend && !webRoot) { errEl.textContent = 'Provide either a Backend URL or Web Root.'; errEl.style.display = 'block'; return; }
+        if (mode === 'proxy' && !backend) {
+            errEl.textContent = 'Backend URL is required for proxy mode.';
+            errEl.style.display = 'block'; return;
+        }
+        if (mode === 'static' && !webRoot) {
+            errEl.textContent = 'Web Root path is required for static mode.';
+            errEl.style.display = 'block'; return;
+        }
 
         let routeBlock = { enabled: 'on', path };
-        if (backend) routeBlock.backends = { enabled: 'on', strategy: form.querySelector('#ahStrategy').value, servers:[{ address: backend, weight: 1 }] };
-        else if (webRoot) routeBlock.web = { enabled: 'on', root: webRoot, listing: true };
+        if (mode === 'proxy') {
+            routeBlock.backends = { enabled: 'on', strategy: form.querySelector('#ahStrategy').value, servers: [{ address: backend, weight: 1 }] };
+        } else {
+            routeBlock.web = { enabled: 'on', root: webRoot, listing: true };
+        }
 
-        const btn = form.querySelector('[type="submit"]'); btn.disabled = true; btn.textContent = 'Saving…';
+        const btn = form.querySelector('[type="submit"]');
+        ui.btn.loading(btn, 'Saving…');
         try {
-            const result = await addHost(getCreds(), domain, { domains:[domain], tls: { mode: 'auto' }, routes: [routeBlock] });
+            const result = await addHost(getCreds(), domain, { domains: [domain], tls: { mode: 'auto' }, routes: [routeBlock] });
             if (result && result.error) throw new Error(result.error);
-            modal.closeAll(); emit('hosts:refresh');
-        } catch (err) { errEl.textContent = err.message; errEl.style.display = 'block'; }
-        finally { btn.disabled = false; btn.textContent = 'Save Host'; }
+            ui.btn.done(btn, 'Saved ✓');
+            setTimeout(() => modal.closeAll(), 800);
+            emit('hosts:refresh');
+        } catch (err) {
+            ui.btn.reset(btn);
+            errEl.textContent = err.message; errEl.style.display = 'block';
+        }
     });
 
-    // JSON Formatting Button inside Edit Modal
+    // JSON Format Button — standard JSON.parse only (CSP blocks eval/new Function)
     on('#formatHostJsonBtn', 'click', () => {
         const el = document.getElementById('editHostJsonTextarea');
+        const errEl = document.getElementById('editHostError');
         try {
-            const parsed = (new Function('return ' + el.value))();
+            const parsed = JSON.parse(el.value);
             el.value = JSON.stringify(parsed, null, 4);
-            document.getElementById('editHostError').style.display = 'none';
+            errEl.style.display = 'none';
         } catch(err) {
-            const errEl = document.getElementById('editHostError');
-            errEl.innerText = "Cannot format. Check syntax: " + err.message;
+            errEl.innerText = 'Cannot format — invalid JSON: ' + err.message;
             errEl.style.display = 'block';
         }
     });
@@ -437,13 +451,23 @@
     });
     on('#strictDeleteBtn', 'click', () => { if (_pendingDelete) _pendingDelete(); modal.closeAll(); });
 
+    const LATENCY_ONLINE_MS  = 30_000;
+    const LATENCY_OFFLINE_MS = 5_000;
+    let _latencyTimer = null;
+
+    function scheduleLatencyCheck(ms) {
+        clearTimeout(_latencyTimer);
+        _latencyTimer = setTimeout(() => { checkLatency(); }, ms);
+    }
+
     // OFFLINE & LATENCY LOGIC (Fast detection with AbortController)
     let currentLatencyController = null;
     async function checkLatency() {
         const banner = document.getElementById('offlineBanner');
         if (!navigator.onLine) {
-            store.set('conn.html', `<span style="color:var(--danger)">❌</span>`);
+            store.set('conn.html', `<span class="conn-dot"><span class="conn-dot-circle" style="background:var(--danger)"></span><span>offline</span></span>`);
             if (banner) { banner.style.display = 'block'; banner.classList.add('active'); }
+            scheduleLatencyCheck(LATENCY_OFFLINE_MS);
             return;
         }
 
@@ -455,37 +479,45 @@
             const headers = new Headers();
             if (getCreds()?.token) headers.set('Authorization', `Bearer ${getCreds().token}`);
 
-            // 5 second timeout to prevent hanging UI
             const timeoutId = setTimeout(() => currentLatencyController.abort(), 5000);
             const res = await fetch(baseUrl + '/uptime', { method: 'HEAD', headers, cache: 'no-store', signal: currentLatencyController.signal });
             clearTimeout(timeoutId);
 
-            if (res.ok || res.status === 401) { if (banner) { banner.style.display = 'none'; banner.classList.remove('active'); } }
-            if (res.status === 401) { store.set('conn.html', `<span style="color:var(--danger)" title="Unauthorized">🔒</span>`); return; }
+            if (res.ok || res.status === 401) {
+                if (banner) { banner.style.display = 'none'; banner.classList.remove('active'); }
+            }
+            if (res.status === 401) {
+                store.set('conn.html', `<span class="conn-dot"><span class="conn-dot-circle" style="background:var(--danger)"></span><span>auth</span></span>`);
+                scheduleLatencyCheck(LATENCY_ONLINE_MS);
+                return;
+            }
             if (!res.ok) throw new Error('non-ok');
 
             const ms = Date.now() - start;
-            const q = ms < MAX_LATENCY_GOOD ? 'excellent' : ms < MAX_LATENCY_FAIR ? 'good' : ms < MAX_LATENCY_POOR ? 'fair' : 'poor';
-            const map = { excellent:['⚡', 'var(--success)'], good:['✓', 'var(--info)'], fair:['⚠️', 'var(--warning)'], poor:['🐢', 'var(--danger)'] };
-            store.set('conn.html', `<span style="color:${map[q][1]}">${map[q][0]} <span>${ms}ms</span></span>`);
+            const color = ms < 100 ? 'var(--success)' : ms < 300 ? 'var(--info)' : ms < 1000 ? 'var(--warning)' : 'var(--danger)';
+            store.set('conn.html', `<span class="conn-dot"><span class="conn-dot-circle" style="background:${color}"></span><span>${ms}ms</span></span>`);
+            scheduleLatencyCheck(LATENCY_ONLINE_MS);
         } catch (e) {
             if (e.name !== 'AbortError') {
-                store.set('conn.html', `<span style="color:var(--danger)">❌</span>`);
+                store.set('conn.html', `<span class="conn-dot"><span class="conn-dot-circle" style="background:var(--danger)"></span><span>offline</span></span>`);
                 if (banner) { banner.style.display = 'block'; banner.classList.add('active'); }
+                scheduleLatencyCheck(LATENCY_OFFLINE_MS);
+            } else {
+                scheduleLatencyCheck(LATENCY_ONLINE_MS);
             }
         }
     }
 
     window.addEventListener('offline', () => {
         document.getElementById('offlineBanner').style.display = 'block';
-        store.set('conn.html', `<span style="color:var(--danger)">❌</span>`);
+        store.set('conn.html', `<span class="conn-dot"><span class="conn-dot-circle" style="background:var(--danger)"></span><span>offline</span></span>`);
+        scheduleLatencyCheck(LATENCY_OFFLINE_MS);
     });
     window.addEventListener('online', checkLatency);
 
     function startLatencyChecks() {
         if (window._latencyStarted) return;
         window._latencyStarted = true;
-        layout.interval(checkLatency, LATENCY_INTERVAL_MS);
         checkLatency();
     }
     if (isLoggedIn()) startLatencyChecks();

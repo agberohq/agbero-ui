@@ -19,7 +19,7 @@
 </div>
 
 <script type="module">
-    import { component, modal, listen, on } from '../lib/oja.full.esm.js';
+    import { component, modal, listen, on, ui } from '../lib/oja.full.esm.js';
     import { getCreds } from '../js/store.js';
     import { fetchFirewall, deleteFirewallRule } from '../js/api.js';
 
@@ -70,11 +70,15 @@
     on('[data-action="unblock-ip"]', 'click', async (e, el) => {
         const ip = el.dataset.ip;
         if (!ip) return;
-
         const ok = await modal.confirm(`Are you sure you want to unblock ${ip}?`);
         if (!ok) return;
-        await deleteFirewallRule(getCreds(), ip);
-        refresh();
+        ui.btn.loading(el, 'Unblocking…');
+        try {
+            await deleteFirewallRule(getCreds(), ip);
+            refresh();
+        } catch (err) {
+            ui.btn.error(el, 'Failed');
+        }
     });
 
     const unsubRefresh = listen('firewall:refresh', refresh);
