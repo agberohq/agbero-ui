@@ -1,0 +1,306 @@
+<div class="page active">
+    <div class="flex-right">
+        <input type="text" id="hostSearch" class="search-input" placeholder="Search hosts, paths, or backends..." autocomplete="off">
+        <button class="btn primary small" id="addHostBtn">+ Host</button>
+        <button class="btn" id="refreshHostsBtn">Refresh</button>
+    </div>
+    <div id="hostsContainer"></div>
+</div>
+
+<script type="module">
+    import { component, on, emit, listen, modal } from '../lib/oja.full.esm.js';
+    import { store, getCreds } from '../js/store.js';
+    import { fetchUptime, parseCertificates, fetchConfig, fmtNum, addHost, deleteHost } from '../js/api.js';
+
+    const isActive = (v) => {
+        if (v === undefined || v === null) return false;
+        if (typeof v === 'string') return['on', 'true', 'enabled', 'yes', '1'].includes(v.toLowerCase());
+        return v === 1 || v === true;
+    };
+
+    function healthDot(b, has) {
+        if (!has) return { cls: 'warn', title: 'No data' };
+        const s = b.health?.status || 'Unknown';
+        if (!b.alive || s === 'Dead' || s === 'Unhealthy') return { cls: 'down', title: s !== 'Unknown' ? s : 'Dead' };
+        if (s === 'Degraded') return { cls: 'warn', title: 'Degraded' };
+        if (s === 'Healthy')  return { cls: 'ok',   title: 'Healthy' };
+        return { cls: b.alive ? 'info' : 'down', title: b.alive ? 'Unverified' : 'Dead' };
+    }
+
+    function buildHostsHtml(hostsStats, configHosts, filterTerm, certificates) {
+        const term = (filterTerm || '').toLowerCase();
+        if (!Object.keys(hostsStats).length) {
+            return { html: `<div class="empty-state"><span>🔮 No hosts configured</span><span>Add a host in agbero.hcl and restart</span></div>`, hostCount: 0, routeCount: 0 };
+        }
+
+        let html = '', hostCount = 0, routeCount = 0;
+
+        for (const[hostname, hStats] of Object.entries(hostsStats)) {
+            hostCount++;
+            const cfgHost = configHosts[hostname] || {};
+            const cfgRoutes = cfgHost.routes ||[];
+            const domainsStr = (cfgHost.domains || [hostname]).join(' ');
+            let hostHasMatch = hostname.toLowerCase().includes(term) || domainsStr.toLowerCase().includes(term);
+            let hostHtml = '';
+
+            const tlsMode = cfgHost.tls?.mode || 'auto';
+            let tlsText = 'Auto TLS', tlsClass = 'success', tlsTitle = 'Managed by Agbero';
+            if (tlsMode === 'none') { tlsClass = 'error'; tlsText = 'No TLS'; }
+            else if (tlsMode?.includes('local')) { tlsClass = 'warning'; tlsText = 'Local TLS'; }
+
+            const cert = certificates.find(c => c.host === hostname);
+            if (cert?.daysLeft !== undefined) {
+                tlsTitle = `Expires: ${new Date(cert.expiry).toLocaleDateString()} (${cert.daysLeft}d)`;
+                if (cert.daysLeft < 7) { tlsClass = cert.daysLeft < 0 ? 'error' : 'warning'; tlsText = cert.daysLeft < 0 ? 'Expired' : `${cert.daysLeft}d`; }
+            }
+
+            hostHtml += `<div class="host-row" data-hostname="${hostname}">
+            <div class="host-header" data-action="open-perf" data-hostname="${hostname}">
+                <div>
+                    <div class="host-name">${hostname}
+                        <span class="badge ${tlsClass}" title="${tlsTitle}">${tlsText}</span>
+                        ${hStats.total_reqs ? `<span class="badge" style="background:var(--hover-bg);color:var(--text-mute);border:1px solid var(--border);">${fmtNum(hStats.total_reqs)} reqs</span>` : ''}
+                    </div>
+                    ${cfgHost.domains?.length > 1 ? `<div class="host-meta">${cfgHost.domains.join(', ')}</div>` : ''}
+                </div>
+                <div style="display:flex;align-items:center;gap:8px;">
+                    <span class="host-perf-hint">Performance &nearr;</span>
+                    <button class="btn small" data-action="edit-json" data-hostname="${hostname}" style="font-size:10px;padding:2px 7px;">Edit JSON</button>
+                    <button class="btn small" data-action="delete-host" data-hostname="${hostname}" style="font-size:10px;padding:2px 7px;color:var(--danger);border-color:var(--danger);">Delete</button>
+                </div>
+            </div>`;
+
+            const statRoutes = hStats.routes ||[];
+            const maxRoutes = Math.max(cfgRoutes.length, statRoutes.length);
+
+            for (let idx = 0; idx < maxRoutes; idx++) {
+                routeCount++;
+                const cfgRoute = cfgRoutes[idx] || {};
+                const statRoute = statRoutes[idx] || {};
+                const path = cfgRoute.path || statRoute.path || '/';
+                const proto = (cfgRoute.protocol || statRoute.protocol || 'http').toUpperCase();
+                const protoClass = proto === 'HTTP' ? 'success' : 'info';
+                const pathMatches = path.toLowerCase().includes(term);
+
+                const t =[];
+                if (cfgRoute.web) {
+                    if (cfgRoute.web.root) t.push('<span class="badge">STATIC</span>');
+                    if (cfgRoute.web.listing) t.push('<span class="badge">LISTING</span>');
+                    if (isActive(cfgRoute.web.git?.enabled)) t.push('<span class="badge info">GIT</span>');
+                    if (isActive(cfgRoute.web.php?.enabled)) t.push('<span class="badge" style="background:#6a73a6;color:#fff;border-color:#6a73a6">PHP</span>');
+                }
+                if (cfgRoute.serverless && isActive(cfgRoute.serverless.enabled)) {
+                    const wCount = (cfgRoute.serverless.workers ||[]).length;
+                    if (wCount > 0) t.push(`<span class="badge warn">WORKER (${wCount})</span>`);
+                    const rCount = (cfgRoute.serverless.rests ||[]).length;
+                    if (rCount > 0) t.push(`<span class="badge info">REST (${rCount})</span>`);
+                }
+                if (isActive(cfgRoute.cache?.enabled)) t.push('<span class="badge success">CACHE</span>');
+                if (isActive(cfgRoute.wasm?.enabled)) t.push('<span class="badge transform">WASM</span>');
+                if (isActive(cfgRoute.rate_limit?.enabled)) t.push('<span class="badge traffic">RATE LIMIT</span>');
+                if (isActive(cfgRoute.cors?.enabled)) t.push('<span class="badge">CORS</span>');
+                if (isActive(cfgRoute.compression_config?.enabled)) t.push('<span class="badge">GZIP</span>');
+                if (isActive(cfgRoute.firewall?.enabled) || isActive(cfgRoute.firewall?.status)) t.push('<span class="badge danger">FIREWALL</span>');
+
+                let auths =[];
+                if (isActive(cfgRoute.basic_auth?.enabled)) auths.push('BASIC');
+                if (isActive(cfgRoute.jwt_auth?.enabled)) auths.push('JWT');
+                if (isActive(cfgRoute.forward_auth?.enabled)) auths.push('FWD');
+                if (isActive(cfgRoute.oauth?.enabled)) auths.push('OAUTH');
+                if (auths.length > 0) t.push(`<span class="badge sec">🔒 ${auths.join(', ')}</span>`);
+
+                const tagsHtml = t.length > 0 ? `<div style="display:flex;gap:5px;flex-wrap:wrap;margin-left:10px;">${t.join('')}</div>` : '';
+
+                const configBEs = cfgRoute.backends?.servers ||[];
+                const statBEs = statRoute.backends ||[];
+                const displayBEs = statBEs.length > 0 ? statBEs : configBEs;
+                let backendHtml = '';
+
+                if (displayBEs.length) {
+                    backendHtml = '<div class="backend-list">';
+                    displayBEs.forEach((b, bIdx) => {
+                        const cfgB = configBEs[bIdx] || {};
+                        const url = b.url || b.address || cfgB.address || '';
+                        if (url && url.toLowerCase().includes(term)) hostHasMatch = true;
+                        const w = cfgB.weight !== undefined ? cfgB.weight : (b.weight || 1);
+                        const { cls, title } = healthDot(b, !!statBEs[bIdx]);
+                        const p99 = b.latency_us?.p99 ? (b.latency_us.p99 / 1000).toFixed(0) + 'ms' : '—';
+                        backendHtml += `<div class="backend-row ${cls === 'down' ? 'down' : ''}">
+                        <span class="dot ${cls}" title="${title}"></span>
+                        <span class="be-url copyable" data-action="copy-url" data-url="${url}">${url}${b.in_flight > 0 ? ` <span class="badge warn">⚡${b.in_flight}</span>` : ''}</span>
+                        <span class="be-stat">W:${w}</span>
+                        <span class="be-stat">${p99}</span>
+                        <span class="be-stat">${fmtNum(b.total_reqs || 0)}</span>
+                    </div>`;
+                    });
+                    backendHtml += '</div>';
+                }
+
+                if (term === '' || hostHasMatch || pathMatches) {
+                    hostHtml += `<div class="route-block clickable" data-action="open-route" data-host="${hostname}" data-idx="${idx}" data-type="route">
+                    <div class="route-header">
+                        <span class="badge ${protoClass}">${proto}</span>
+                        <span class="route-path">${path}</span>
+                        ${tagsHtml}
+                        <span class="badge info" style="margin-left:auto;font-size:9px;">DETAILS →</span>
+                    </div>
+                    ${backendHtml}
+                </div>`;
+                }
+            }
+
+            const statProxies = hStats.proxies ||[];
+            statProxies.forEach((proxy, idx) => {
+                hostHtml += `<div class="route-block clickable" data-action="open-route" data-host="${hostname}" data-idx="${idx}" data-type="proxy">
+                <div class="route-header">
+                    <span class="badge info">TCP</span>
+                    <span class="route-path">${proxy.name || proxy.path || '*'}</span>
+                    <span class="badge info" style="margin-left:auto;font-size:9px;">DETAILS →</span>
+                </div>
+            </div>`;
+            });
+
+            hostHtml += '</div>';
+            if (hostHasMatch || term === '') html += hostHtml;
+        }
+
+        if (!html) html = `<div class="empty-state"><span>🔍 No hosts matching "${term}"</span></div>`;
+        return { html, hostCount, routeCount };
+    }
+
+    function syncList() {
+        const { html, hostCount, routeCount } = buildHostsHtml(
+            (store.get('hostsData') || {}).stats || {},
+            (store.get('lastConfig') || {}).hosts || {},
+            store.get('searchTerm') || '',
+            store.get('certificates') ||[]
+        );
+
+        // Use innerHTML instead of morph to completely avoid stealing focus from the search input
+        const container = document.getElementById('hostsContainer');
+        if (container) container.innerHTML = html;
+
+        store.set('stats.hostCount', hostCount);
+        store.set('stats.routeCount', routeCount);
+    }
+
+    async function refresh() {
+        const data = await fetchUptime(getCreds());
+        if (!data || data.__offline || data.__unauthorized) return;
+        store.set('hostsData', { stats: data.hosts || {} });
+
+        fetchConfig(getCreds()).then(config => {
+            if (config && !config.__offline) {
+                store.set('lastConfig', config);
+                store.set('certificates', parseCertificates(config.hosts));
+            }
+        }).catch(() => {});
+        syncList();
+    }
+
+    let unsubSearch = null; let unsubRefresh = null; let unsubMetrics = null;
+
+    // =========================================================================
+    // EXECUTE IMMEDIATELY
+    // =========================================================================
+
+    const container = document.getElementById('hostsContainer');
+    if (container && !store.get('hostsData')) {
+        container.innerHTML = `<div class="loading-rows"><div class="loading-row"></div><div class="loading-row"></div></div>`;
+    } else {
+        syncList();
+    }
+
+    // Debounce search input to prevent UI freezing and ensure focus isn't lost
+    let searchTimeout;
+    on('#hostSearch', 'input', (e, el) => {
+        clearTimeout(searchTimeout);
+        searchTimeout = setTimeout(() => {
+            store.set('searchTerm', el.value);
+            syncList();
+        }, 150);
+    });
+
+    on('#addHostBtn', 'click', () => {
+        const form = document.getElementById('addHostForm');
+        if (form) form.reset();
+        document.getElementById('addHostError').style.display = 'none';
+        if (modal && modal.open) modal.open('addHostModal');
+    });
+
+    on('#refreshHostsBtn', 'click', refresh);
+
+    on('[data-action="open-route"]', 'click', (e, btn) => {
+        emit('drawer:open-route', { host: btn.dataset.host, idx: parseInt(btn.dataset.idx), type: btn.dataset.type });
+    });
+
+    on('[data-action="open-perf"]', 'click', (e, el) => {
+        // Prevent event from bubbling up if user clicked Edit or Delete
+        if (e.target.closest('.btn')) return;
+        window.app.openPerformanceModal?.(el.dataset.hostname);
+    });
+
+    on('[data-action="copy-url"]', 'click', (e, btn) => {
+        e.stopPropagation();
+        navigator.clipboard?.writeText(btn.dataset.url);
+    });
+
+    on('[data-action="edit-json"]', 'click', (e, btn) => {
+        e.stopPropagation();
+        const hostname = btn.dataset.hostname;
+        const config = store.get('lastConfig')?.hosts?.[hostname];
+        if (!config) return alert("Configuration not loaded. Please refresh.");
+
+        document.getElementById('editHostTitle').innerText = hostname;
+        document.getElementById('editHostError').style.display = 'none';
+        document.getElementById('editHostJsonTextarea').value = JSON.stringify(config, null, 4);
+        document.getElementById('saveHostJsonBtn').dataset.hostname = hostname;
+        if (modal && modal.open) modal.open('editHostJsonModal');
+    });
+
+    on('#saveHostJsonBtn', 'click', async (e, btn) => {
+        const rawJson = document.getElementById('editHostJsonTextarea').value;
+        const errEl = document.getElementById('editHostError'); errEl.style.display = 'none';
+        try {
+            // Use Function constructor for loose JS object parsing (allows unquoted keys, trailing commas)
+            const parsedConfig = (new Function('return ' + rawJson))();
+            btn.disabled = true; btn.innerText = 'Saving...';
+            const result = await addHost(getCreds(), btn.dataset.hostname, parsedConfig);
+            if (result && result.error) throw new Error(result.error);
+            if (modal && modal.closeAll) modal.closeAll();
+            refresh();
+        } catch (err) {
+            errEl.innerText = err.message; errEl.style.display = 'block';
+        } finally {
+            btn.disabled = false; btn.innerText = 'Save Configuration';
+        }
+    });
+
+    on('[data-action="delete-host"]', 'click', (e, btn) => {
+        e.stopPropagation();
+        const h = btn.dataset.hostname;
+        emit('app:strict-delete', {
+            message: `Permanently delete configuration for <strong>${h}</strong>. This drops all traffic immediately.`,
+            targetText: h,
+            onConfirm: async () => { await deleteHost(getCreds(), h); refresh(); }
+        });
+    });
+
+    unsubSearch = listen('hosts:search', ({ term }) => {
+        const el = document.getElementById('hostSearch');
+        if (el) el.value = term;
+        store.set('searchTerm', term);
+        syncList();
+    });
+    unsubRefresh = listen('hosts:refresh', refresh);
+    unsubMetrics = listen('metrics:updated', syncList);
+
+    if (!store.get('hostsData')) refresh();
+
+    component.onUnmount(() => {
+        if (unsubSearch) unsubSearch();
+        if (unsubRefresh) unsubRefresh();
+        if (unsubMetrics) unsubMetrics();
+        unsubSearch = unsubRefresh = unsubMetrics = null;
+    });
+</script>

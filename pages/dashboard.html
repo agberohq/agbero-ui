@@ -1,0 +1,179 @@
+<div class="page active">
+
+    <!-- Hero Section -->
+    <div class="hero">
+        <h1 id="heroTitle">System Status</h1>
+        <p id="heroSub">Monitoring <span id="heroHostCount">0</span> hosts and <span id="heroRouteCount">0</span> routes.</p>
+
+        <div class="health-bar-container">
+            <div class="health-bar" id="globalHealthBar">
+                <div class="hb-seg hb-ok" style="width: 100%"></div>
+                <div class="hb-seg hb-err" style="width: 0%"></div>
+            </div>
+            <div class="health-legend">
+                <span><span class="dot ok"></span> Success</span>
+                <span class="error-rate" id="errorRateText">0.0% errors</span>
+            </div>
+        </div>
+        <div class="last-updated" id="lastUpdatedText">Updated just now</div>
+    </div>
+
+    <!-- Response time chart -->
+    <div class="chart-wrapper">
+        <div class="chart-controls">
+            <span class="chart-tab active" data-type="all">ALL</span>
+            <span class="chart-tab" data-type="http">HTTP</span>
+            <span class="chart-tab" data-type="tcp">TCP</span>
+        </div>
+        <div id="responseGraph" style="width:100%;height:100%;"></div>
+    </div>
+</div>
+
+<script type="module">
+    import { component, listen, chart, on } from '../lib/oja.full.esm.js';
+    import { store, getCreds } from '../js/store.js';
+    import { fetchUptime } from '../js/api.js';
+
+    let mainChart = null;
+    let unsub     = null;
+    let pollTimer = null;
+
+    function buildTimeGradient(n) {
+        return Array.from({ length: n }, (_, i) => {
+            const t = i / Math.max(n - 1, 1);
+            return `rgba(59,130,246,${(0.18 + t * 0.82).toFixed(2)})`;
+        });
+    }
+
+    function renderHealth(total, errors) {
+        const el = document.getElementById('globalHealthBar');
+        if (!el) return;
+        const errPct = total > 0 ? (errors / total) * 100 : 0;
+        const succPct = Math.max(0, 100 - errPct);
+        el.innerHTML = `<div class="hb-seg hb-ok" style="width: ${succPct}%"></div><div class="hb-seg hb-err" style="width: ${errPct}%"></div>`;
+    }
+
+    function refreshChart() {
+        const history = store.get('metricsHistory') || { all: [], http: [], tcp:[] };
+        const key  = store.get('activeChart') || 'all';
+        const vals = history[key] ||[];
+
+        // Prevent D3 crash if array is empty
+        if (vals.length === 0) vals.push(0);
+
+        if (!mainChart) {
+            mainChart = chart.bar('#responseGraph', vals, {
+                unit:   'ms',
+                warnAt: 500,
+                colors: buildTimeGradient(vals.length),
+                label:  key.toUpperCase(),
+            });
+        } else {
+            mainChart.update(vals, {
+                colors: buildTimeGradient(vals.length),
+                label:  key.toUpperCase(),
+            });
+        }
+    }
+
+    function processSnapshot(snapshot) {
+        if (!snapshot) return;
+
+        // 1. Safely accumulate D3 History Array
+        const history = store.get('metricsHistory') || { all: [], http: [], tcp:[] };
+        if (snapshot.global) {
+            history.all.push(snapshot.global.avg_p99_ms || 0);
+            history.http.push(snapshot.global.http_p99_ms || 0);
+            history.tcp.push(snapshot.global.tcp_p99_ms || 0);
+
+            if (history.all.length > 60) {
+                history.all.shift(); history.http.shift(); history.tcp.shift();
+            }
+            store.set('metricsHistory', history);
+        }
+
+        // 2. Aggregate counts
+        let hc = 0, rc = 0, tReqs = 0, tErrs = 0;
+        if (snapshot.hosts) {
+            for (const h of Object.values(snapshot.hosts)) {
+                hc++;
+                rc += (h.routes ||[]).length + (h.proxies ||[]).length;
+                tReqs += h.total_reqs || 0;
+                (h.routes || []).forEach(r => (r.backends ||[]).forEach(b => tErrs += b.failures || 0));
+                (h.proxies ||[]).forEach(p => (p.backends ||[]).forEach(b => tErrs += b.failures || 0));
+            }
+        }
+
+        // Update Store
+        store.set('stats.total', tReqs);
+        store.set('stats.errors', tErrs);
+        store.set('stats.hostCount', hc);
+        store.set('stats.routeCount', rc);
+
+        // 3. Update DOM Elements instantly
+        const hEl = document.getElementById('heroHostCount');
+        if (hEl) hEl.innerText = hc;
+
+        const rEl = document.getElementById('heroRouteCount');
+        if (rEl) rEl.innerText = rc;
+
+        const errPct = tReqs > 0 ? ((tErrs / tReqs) * 100).toFixed(1) : 0;
+        const errText = document.getElementById('errorRateText');
+        if (errText) errText.innerText = `${errPct}% errors`;
+
+        renderHealth(tReqs, tErrs);
+
+        const timeEl = document.getElementById('lastUpdatedText');
+        if (timeEl) timeEl.innerText = 'Updated ' + new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+
+        refreshChart();
+    }
+
+    async function tick() {
+        const data = await fetchUptime(getCreds());
+        if (data && !data.__offline) {
+            store.set('lastUptime', data);
+            processSnapshot(data);
+        }
+    }
+
+    // =========================================================================
+    // EXECUTE IMMEDIATELY (Bypassing component.onMount timing issues)
+    // =========================================================================
+
+    // 1. Paint immediately from cache to prevent blank flash
+    const cached = store.get('lastUptime');
+    if (cached) processSnapshot(cached);
+
+    // 2. Fetch fresh data immediately
+    tick();
+
+    // 3. Start local poller for the graph
+    pollTimer = setInterval(tick, 5000);
+
+    // 4. Also listen to global metrics if they arrive from elsewhere
+    unsub = listen('metrics:updated', (payload) => {
+        const snap = payload.snapshot || payload;
+        processSnapshot(snap);
+    });
+
+    // Setup Chart Tabs
+    document.querySelectorAll('.chart-tab').forEach(tab => {
+        on(tab, 'click', () => {
+            document.querySelectorAll('.chart-tab').forEach(t => t.classList.remove('active'));
+            tab.classList.add('active');
+            store.set('activeChart', tab.dataset.type);
+            refreshChart();
+        });
+    });
+
+    // Cleanup on navigation
+    component.onUnmount(() => {
+        if (unsub) unsub();
+        if (pollTimer) clearInterval(pollTimer);
+        if (mainChart) mainChart.destroy?.();
+        mainChart = null;
+        unsub = null;
+        pollTimer = null;
+    });
+</script>

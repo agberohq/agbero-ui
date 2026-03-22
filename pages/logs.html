@@ -1,0 +1,201 @@
+<div class="page active" style="max-width:100%;">
+    <div class="flex-right wrap-mobile">
+        <div class="filter-chips">
+            <span class="chip active" data-level="ALL">ALL</span>
+            <span class="chip" data-level="INFO">INFO</span>
+            <span class="chip" data-level="WARN">WARN</span>
+            <span class="chip" data-level="ERROR">ERROR</span>
+        </div>
+        <span class="divider-v hide-mobile"></span>
+        <select id="logsTailSelect" style="width:auto;margin:0;">
+            <option value="100">100 Lines</option>
+            <option value="500">500 Lines</option>
+        </select>
+        <button class="btn" id="logsExpandAllBtn">Expand All</button>
+        <button class="btn" id="logsCollapseAllBtn">Collapse All</button>
+        <span class="divider-v hide-mobile"></span>
+        <button class="btn" id="logsExportBtn">Export</button>
+        <button class="btn" id="logsPauseBtn">Pause</button>
+        <button class="btn" id="logsClearBtn">Clear</button>
+    </div>
+    <div id="logsList" class="logs-console"></div>
+</div>
+
+<script type="module">
+    import { component, on } from '../lib/oja.full.esm.js';
+    import { store, getCreds } from '../js/store.js';
+    import { fetchLogs } from '../js/api.js';
+
+    let paused = false;
+    let filter = store.get('logFilter') || 'ALL';
+    let logs =[];
+    let pollTimer = null;
+    let isAllExpanded = false; // Tracks the global expand/collapse state
+
+    function renderLogs() {
+        const el = document.getElementById('logsList');
+        if (!el) return;
+
+        if (!logs.length) {
+            el.innerHTML = `<div style="color:var(--text-mute);text-align:center;padding:40px;"><span style="display:block;font-size:24px;margin-bottom:10px;">📭</span>No logs yet. Waiting for traffic...</div>`;
+            return;
+        }
+
+        const filtered = logs.filter(l => {
+            if (filter === 'ALL') return true;
+            let lvl = 'INFO';
+            if (typeof l === 'object' && l) lvl = l.lvl || l.level || 'INFO';
+            else if (typeof l === 'string') {
+                if (l.includes('"lvl":"ERROR"') || l.includes('ERROR')) lvl = 'ERROR';
+                else if (l.includes('"lvl":"WARN"') || l.includes('WARN')) lvl = 'WARN';
+            }
+            return lvl === filter;
+        });
+
+        if (!filtered.length) {
+            el.innerHTML = `<div style="color:var(--text-mute);text-align:center;padding:20px;">No logs for filter: ${filter}</div>`;
+            return;
+        }
+
+        el.innerHTML = filtered.map(l => {
+            let lvl = 'INFO', msg = '', ts = '', fields = {};
+
+            if (typeof l === 'string') {
+                try {
+                    const p = JSON.parse(l);
+                    lvl = p.lvl || p.level || 'INFO';
+                    msg = p.msg || p.message || l;
+                    ts = p.ts || p.time || '';
+                    fields = p.fields || {};
+                } catch {
+                    msg = l;
+                }
+            } else if (l && typeof l === 'object') {
+                lvl = l.lvl || l.level || 'INFO';
+                msg = l.msg || l.message || '';
+                ts = l.ts || l.time || '';
+                fields = l.fields || {};
+            }
+
+            if (ts?.includes('T')) ts = ts.split('T')[1]?.split('.')[0] || ts;
+
+            let full = msg;
+            if (fields.method && fields.path) { full += ` ${fields.method} ${fields.path}`; delete fields.method; delete fields.path; }
+            if (fields.status) { full += ` [${fields.status}]`; delete fields.status; }
+            if (fields.duration) { full += ` (${(fields.duration / 1e6).toFixed(2)}ms)`; delete fields.duration; }
+
+            let extraJson = '';
+            if (Object.keys(fields).length > 0 && window.app?.syntaxHighlight) {
+                const openAttr = isAllExpanded ? 'open' : '';
+                extraJson = `
+            <details class="log-details" style="margin-top: 4px;" ${openAttr}>
+                <summary style="font-size: 10px; color: var(--accent); cursor: pointer; user-select: none; outline: none; display: inline-block; font-weight: 500;">
+                    {...} JSON Payload
+                </summary>
+                ${window.app.syntaxHighlight(fields)}
+            </details>`;
+            }
+
+            const color = lvl === 'ERROR' ? 'var(--danger)' : lvl === 'WARN' ? 'var(--warning)' : '#aaa';
+
+            return `<div class="log-entry" style="display:block; border-bottom: 1px solid var(--border); padding-bottom: 8px;">
+            <div style="display:flex;gap:8px;">
+                <div class="log-ts">${ts}</div>
+                <div class="log-lvl" style="color:${color}; font-weight:bold; width:45px;">${lvl}</div>
+                <div class="log-msg">${full}</div>
+            </div>
+            ${extraJson}
+        </div>`;
+        }).join('');
+    }
+
+    async function fetchAndRender() {
+        if (paused) return;
+        const lines = document.getElementById('logsTailSelect')?.value || '100';
+        const data  = await fetchLogs(getCreds(), lines);
+        if (data && Array.isArray(data)) {
+            logs = [...data].reverse();
+            renderLogs();
+        }
+    }
+
+    async function exportLogs() {
+        const lines = document.getElementById('logsTailSelect')?.value || '100';
+        const data  = await fetchLogs(getCreds(), lines);
+        if (!data || !Array.isArray(data)) return;
+
+        const text = data.map(l => {
+            if (typeof l === 'object' && l) {
+                const ts = l.ts || ''; const lvl = l.lvl || 'INFO'; const msg = l.msg || '';
+                let line = `[${ts}] ${lvl} - ${msg}`;
+                const f = l.fields || {};
+                if (f.method && f.path) line += ` ${f.method} ${f.path}`;
+                if (f.status) line += ` [${f.status}]`;
+                if (f.duration) line += ` (${(f.duration / 1e6).toFixed(2)}ms)`;
+                if (f.remote) line += ` from ${f.remote}`;
+                return line + '\n' + JSON.stringify(l);
+            }
+            return typeof l === 'string' ? l : JSON.stringify(l);
+        }).join('\n---\n');
+
+        const a = Object.assign(document.createElement('a'), {
+            href: URL.createObjectURL(new Blob([text], { type: 'text/plain' })),
+            download: `agbero-logs-${new Date().toISOString().slice(0,19).replace(/:/g,'-')}.log`,
+        });
+        a.click();
+        URL.revokeObjectURL(a.href);
+
+        const btn = document.getElementById('logsExportBtn');
+        if (btn) { const old = btn.textContent; btn.textContent = '✓ Exported'; setTimeout(() => btn.textContent = old, 2000); }
+    }
+
+    // =========================================================================
+    // EXECUTE IMMEDIATELY
+    // =========================================================================
+
+    // Sync initial filter from store to UI
+    if (filter) {
+        document.querySelectorAll('.chip').forEach(c => c.classList.remove('active'));
+        const activeChip = document.querySelector(`.chip[data-level="${filter}"]`);
+        if (activeChip) activeChip.classList.add('active');
+    }
+
+    // Start polling
+    fetchAndRender();
+    pollTimer = setInterval(fetchAndRender, 2000);
+
+    // Event Listeners
+    on('#logsPauseBtn', 'click', (e, btn) => {
+        paused = !paused;
+        btn.textContent = paused ? 'Resume' : 'Pause';
+    });
+
+    on('#logsExpandAllBtn', 'click', () => {
+        isAllExpanded = true;
+        document.querySelectorAll('.log-details').forEach(el => el.open = true);
+    });
+
+    on('#logsCollapseAllBtn', 'click', () => {
+        isAllExpanded = false;
+        document.querySelectorAll('.log-details').forEach(el => el.open = false);
+    });
+
+    on('#logsExportBtn', 'click', exportLogs);
+    on('#logsClearBtn', 'click', () => { logs =[]; renderLogs(); });
+    on('#logsTailSelect', 'change', fetchAndRender);
+
+    on('.chip', 'click', (e, chip) => {
+        document.querySelectorAll('.chip').forEach(c => c.classList.remove('active'));
+        chip.classList.add('active');
+        filter = chip.dataset.level;
+        store.set('logFilter', filter);
+        renderLogs();
+    });
+
+    // Cleanup when navigating away
+    component.onUnmount(() => {
+        if (pollTimer) clearInterval(pollTimer);
+        paused = false;
+        logs =[];
+    });
+</script>

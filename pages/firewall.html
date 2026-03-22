@@ -1,0 +1,87 @@
+<div class="page active">
+    <div class="flex-right">
+        <button class="btn primary" id="addRuleBtn">Block IP</button>
+    </div>
+    <div class="table-responsive">
+        <table class="simple-table">
+            <thead>
+            <tr>
+                <th>IP / CIDR</th>
+                <th>REASON</th>
+                <th class="hide-mobile">SCOPE</th>
+                <th class="hide-mobile">CREATED</th>
+                <th>ACTION</th>
+            </tr>
+            </thead>
+            <tbody id="firewallTable"></tbody>
+        </table>
+    </div>
+</div>
+
+<script type="module">
+    import { component, modal, listen, on } from '../lib/oja.full.esm.js';
+    import { getCreds } from '../js/store.js';
+    import { fetchFirewall, deleteFirewallRule } from '../js/api.js';
+
+    // render - displays current firewall blocks
+    // Handles empty states when the firewall is disabled or unconfigured
+    function render(data) {
+        const tbody = document.getElementById('firewallTable');
+        if (!tbody) return;
+
+        if (!data) {
+            tbody.innerHTML = `<tr><td colspan="5" style="padding:20px;"><div class="empty-state">⚠️ Firewall unavailable</div></td></tr>`;
+            return;
+        }
+        if (data.enabled === false) {
+            tbody.innerHTML = `<tr><td colspan="5" style="padding:20px;"><div class="empty-state">
+            <span>🛡️ Firewall disabled</span><span>Enable in agbero.hcl to block IPs</span>
+        </div></td></tr>`;
+            return;
+        }
+
+        const rules = data.rules ||[];
+        if (!rules.length) {
+            tbody.innerHTML = `<tr><td colspan="5" style="padding:20px;"><div class="empty-state">
+            <span>✅ No blocked IPs</span><span>All traffic is allowed</span>
+        </div></td></tr>`;
+            return;
+        }
+
+        tbody.innerHTML = rules.map(r => {
+            const created = r.created_at ? new Date(r.created_at) : new Date();
+            const dateStr = !isNaN(created.getTime()) ? created.toLocaleDateString() : 'N/A';
+            return `<tr>
+            <td class="mono">${r.ip||'0.0.0.0'}</td>
+            <td>${r.reason||'-'}</td>
+            <td class="hide-mobile">${r.host||'*'} / ${r.path||'*'}</td>
+            <td class="hide-mobile">${dateStr}</td>
+            <td><button class="btn small error" data-action="unblock-ip" data-ip="${r.ip||''}">Unblock</button></td>
+        </tr>`;
+        }).join('');
+    }
+
+    // refresh - coordinates firewall data pulling
+    // Fetches the latest rules from the server and paints the UI
+    async function refresh() {
+        render(await fetchFirewall(getCreds()));
+    }
+
+    on('[data-action="unblock-ip"]', 'click', async (e, el) => {
+        const ip = el.dataset.ip;
+        if (!ip) return;
+
+        const ok = await modal.confirm(`Are you sure you want to unblock ${ip}?`);
+        if (!ok) return;
+        await deleteFirewallRule(getCreds(), ip);
+        refresh();
+    });
+
+    const unsubRefresh = listen('firewall:refresh', refresh);
+
+    component.onMount(() => {
+        on('#addRuleBtn', 'click', () => modal.open('ruleModal'));
+        refresh();
+    });
+    component.onUnmount(() => unsubRefresh());
+</script>
