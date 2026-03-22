@@ -337,13 +337,26 @@ code, pre { font-family: var(--font-mono); }
 .backend-list { padding: 2px 0 2px 0; }
 .backend-row {
     display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 4px 0;
+    flex-direction: column;
+    gap: 3px;
+    padding: 5px 0;
     font-size: 12px;
 }
+.be-line1 {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+}
+.be-line2 {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding-left: 22px; /* aligns with URL — accounts for dot + trend glyph */
+    flex-wrap: wrap;
+}
 .backend-row.down .be-url { color: var(--danger); }
-.be-url { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
+.be-url  { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
 .be-url:hover { color: var(--accent); }
 .be-stat { font-family: var(--font-mono); font-size: 11px; color: var(--text-mute); white-space: nowrap; }
 

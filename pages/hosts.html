@@ -45,13 +45,17 @@
 
         return `
         <div class="backend-row ${cls === 'down' ? 'down' : ''}">
-            <span class="dot ${cls}" title="${title}"></span>
-            <span style="font-size:10px;color:${tColor};flex-shrink:0;">${tGlyph}</span>
-            <span class="be-url copyable" data-action="copy-url" data-url="${url}">${url}${inflight}</span>
-            ${score !== '' ? `<span class="be-stat" title="Health score">${score}</span>` : ''}
-            <span class="be-stat">W:${w}</span>
-            <span class="be-stat">${p99}</span>
-            <span class="be-stat">${fmtNum(b.total_reqs || 0)}</span>
+            <div class="be-line1">
+                <span class="dot ${cls}" title="${title}"></span>
+                <span style="font-size:10px;color:${tColor};flex-shrink:0;">${tGlyph}</span>
+                <span class="be-url copyable" data-action="copy-url" data-url="${url}">${url}${inflight}</span>
+            </div>
+            <div class="be-line2">
+                ${score !== '' ? `<span class="be-stat" title="Health score">${score}</span>` : ''}
+                <span class="be-stat">W:${w}</span>
+                <span class="be-stat">${p99}</span>
+                <span class="be-stat">${fmtNum(b.total_reqs || 0)}</span>
+            </div>
         </div>`;
     }
 
@@ -93,6 +97,9 @@
         const cfgRoutes  = cfgHost.routes || [];
         const domainsStr = (cfgHost.domains || [hostname]).join(' ');
 
+        // protected is a host-level field, not per-route
+        const isProtected = cfgHost.protected === 'on';
+
         // TLS badge
         const tlsMode = cfgHost.tls?.mode || 'auto';
         let tlsText = 'Auto TLS', tlsClass = 'success', tlsTitle = 'Managed by Agbero';
@@ -107,12 +114,17 @@
             }
         }
 
-        const isProtected = cfgRoutes.some(r => r.protected === 'on');
         const deleteBtn   = isProtected
             ? `<button class="btn small" disabled title="Cannot delete — contains protected routes"
                        style="font-size:10px;padding:2px 7px;opacity:0.4;cursor:not-allowed;">Delete</button>`
             : `<button class="btn small" data-action="delete-host" data-hostname="${hostname}"
                        style="font-size:10px;padding:2px 7px;color:var(--danger);border-color:var(--danger);">Delete</button>`;
+
+        // Edit JSON hidden for protected hosts — config is managed by the server
+        const editBtn = isProtected
+            ? ''
+            : `<button class="btn small" data-action="edit-json" data-hostname="${hostname}"
+                       style="font-size:10px;padding:2px 7px;">Edit JSON</button>`;
 
         // Routes
         const statRoutes = hStats.routes || [];
@@ -172,8 +184,7 @@
                 </div>
                 <div style="display:flex;align-items:center;gap:8px;">
                     <span class="host-perf-hint">Performance &nearr;</span>
-                    <button class="btn small" data-action="edit-json" data-hostname="${hostname}"
-                            style="font-size:10px;padding:2px 7px;">Edit JSON</button>
+                    ${editBtn}
                     ${deleteBtn}
                 </div>
             </div>
@@ -317,7 +328,7 @@
 
     on('[data-action="open-perf"]', 'click', (e, el) => {
         if (e.target.closest('.btn')) return;
-        window.app.openPerformanceModal?.(el.dataset.hostname);
+        emit('perf:open', { hostname: el.dataset.hostname });
     });
 
     on('[data-action="copy-url"]', 'click', (e, btn) => {

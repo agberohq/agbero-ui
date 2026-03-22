@@ -26,13 +26,24 @@
 </div>
 
 <script type="module">
-    import { component, on, listen } from '../lib/oja.full.esm.js';
+    import { component, on, listen, emit } from '../lib/oja.full.esm.js';
     import { store, getCreds } from '../js/store.js';
     import { fetchUptime, fetchConfig } from '../js/api.js';
 
     const graph = new RouteGraph('graphContainer');
     let paused = true;
     let pollTimer = null;
+
+    // Wire graph node clicks through emit — no window.app dependency
+    graph._onClick = function(d) {
+        if (d.type === 'route' && d.meta) {
+            emit('drawer:open-route', { host: d.meta.hostname, idx: d.meta.routeIdx, type: d.meta.routeType });
+        } else if (d.type === 'backend' && d.meta) {
+            emit('drawer:open-backend', { host: d.meta.hostname, routeIdx: d.meta.routeIdx, backendIdx: d.meta.backendIdx, type: d.meta.routeType });
+        } else if (d.type === 'host' && d.meta) {
+            emit('perf:open', { hostname: d.meta.hostname });
+        }
+    };
 
     graph.onNodeClick = function(node) {
         const panel = document.getElementById('mapInfoPanel');

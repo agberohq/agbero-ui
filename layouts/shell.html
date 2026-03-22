@@ -276,7 +276,7 @@
 </div>
 
 <script type="module">
-    import { modal, layout, emit, listen, chart, on, auth, ui } from '../lib/oja.full.esm.js';
+    import { modal, layout, emit, listen, chart, on, auth, ui, query } from '../lib/oja.full.esm.js';
     import { store, getCreds, isLoggedIn, setCredentials, clearCredentials, getHost, setHost } from '../js/store.js';
     import { fetchTelemetry, login, addFirewallRule, broadcastClusterRoute, addHost, deleteHost } from '../js/api.js';
     let _perfCharts = null;
@@ -558,14 +558,14 @@
         }
     }
 
-    window.app.openPerformanceModal = async function(hostname) {
-        document.getElementById('perfModalTitle').textContent = 'Performance History';
-        document.getElementById('perfModalHost').textContent  = hostname;
-        document.getElementById('perfDataRange').textContent  = '';
+    listen('perf:open', async ({ hostname }) => {
+        query('#perfModalTitle').textContent = 'Performance History';
+        query('#perfModalHost').textContent  = hostname;
+        query('#perfDataRange').textContent  = '';
         modal.open('perfModal');
         window._perfHost = hostname;
-        await loadPerfData(hostname, document.getElementById('perfRangeSelect').value);
-    };
+        await loadPerfData(hostname, query('#perfRangeSelect').value);
+    });
 
     on('#perfRangeSelect', 'change', async (e, el) => { if (window._perfHost) await loadPerfData(window._perfHost, el.value); });
 

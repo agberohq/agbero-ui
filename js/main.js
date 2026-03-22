@@ -32,10 +32,18 @@ async function performInitialChecks() {
 
 let _stopPolling = null;
 
+let _configPollTimer = null;
+
 function startPollingIfNeeded() {
     if (window._isPolling) return;
     window._isPolling = true;
     _stopPolling = startMetricsPolling(store);
+
+    // Config poll: every 30s — picks up weight changes, new routes, backend edits
+    // without requiring a manual refresh. Metrics poll is every 2s but only covers
+    // live stats; /config only changes when the operator edits configuration.
+    if (_configPollTimer) clearInterval(_configPollTimer);
+    _configPollTimer = setInterval(loadConfigData, 30_000);
 }
 
 // loadConfigData - fetches /config + /uptime and populates all config-related store keys
@@ -135,6 +143,7 @@ async function bootstrapApp() {
         store.set('auth.isLoggedIn', false);
         clearCredentials();
         window._isPolling = false;
+        if (_configPollTimer) { clearInterval(_configPollTimer); _configPollTimer = null; }
         modal.open('loginModal');
     });
 
