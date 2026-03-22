@@ -1,113 +1,170 @@
 <div class="page active" style="max-width:100%;">
-    <div class="flex-right wrap-mobile">
-        <div class="filter-chips">
-            <span class="chip active" data-level="ALL">ALL</span>
-            <span class="chip" data-level="INFO">INFO</span>
-            <span class="chip" data-level="WARN">WARN</span>
-            <span class="chip" data-level="ERROR">ERROR</span>
+
+    <div class="logs-toolbar">
+        <!-- Group 1: filter + tail -->
+        <div class="logs-toolbar-left">
+            <div class="filter-chips">
+                <span class="chip active" data-level="ALL">ALL</span>
+                <span class="chip" data-level="INFO">INFO</span>
+                <span class="chip" data-level="WARN">WARN</span>
+                <span class="chip" data-level="ERROR">ERROR</span>
+            </div>
+            <span class="divider-v hide-mobile"></span>
+            <select id="logsTailSelect" style="width:auto;margin:0;">
+                <option value="50">Last 50</option>
+                <option value="100" selected>Last 100</option>
+                <option value="250">Last 250</option>
+                <option value="500">Last 500</option>
+                <option value="1000">Last 1000</option>
+            </select>
         </div>
-        <span class="divider-v hide-mobile"></span>
-        <select id="logsTailSelect" style="width:auto;margin:0;">
-            <option value="50">Last 50</option>
-            <option value="100">Last 100</option>
-            <option value="250">Last 250</option>
-            <option value="500">Last 500</option>
-            <option value="1000">Last 1000</option>
-        </select>
-        <button class="btn" id="logsExpandAllBtn">Expand All</button>
-        <button class="btn" id="logsCollapseAllBtn">Collapse All</button>
-        <span class="divider-v hide-mobile"></span>
-        <button class="btn" id="logsExportBtn">Export</button>
-        <button class="btn" id="logsPauseBtn">Pause</button>
-        <button class="btn" id="logsClearBtn">Clear</button>
+
+        <!-- Group 2: icon action buttons -->
+        <div class="logs-toolbar-right">
+            <!-- Expand all: maximize / unfold -->
+            <button class="btn icon-btn" id="logsExpandAllBtn" title="Expand all JSON payloads">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="15 3 21 3 21 9"/>
+                    <polyline points="9 21 3 21 3 15"/>
+                    <line x1="21" y1="3" x2="14" y2="10"/>
+                    <line x1="3" y1="21" x2="10" y2="14"/>
+                </svg>
+            </button>
+            <!-- Collapse all: minimize / fold -->
+            <button class="btn icon-btn" id="logsCollapseAllBtn" title="Collapse all JSON payloads">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="4 14 10 14 10 20"/>
+                    <polyline points="20 10 14 10 14 4"/>
+                    <line x1="10" y1="14" x2="21" y2="3"/>
+                    <line x1="3" y1="21" x2="14" y2="10"/>
+                </svg>
+            </button>
+            <span class="divider-v hide-mobile"></span>
+            <!-- Export / download -->
+            <button class="btn icon-btn" id="logsExportBtn" title="Export as JSON (jq-compatible)">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                    <polyline points="7 10 12 15 17 10"/>
+                    <line x1="12" y1="15" x2="12" y2="3"/>
+                </svg>
+            </button>
+            <!-- Pause / Resume — SVG swaps on click -->
+            <button class="btn icon-btn" id="logsPauseBtn" title="Pause live updates">
+                <svg id="logsPauseIcon" width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                    <rect x="6" y="4" width="4" height="16"/>
+                    <rect x="14" y="4" width="4" height="16"/>
+                </svg>
+            </button>
+            <!-- Clear / trash -->
+            <button class="btn icon-btn" id="logsClearBtn" title="Clear log view">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="3 6 5 6 21 6"/>
+                    <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
+                    <path d="M10 11v6M14 11v6"/>
+                    <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>
+                </svg>
+            </button>
+        </div>
     </div>
+
     <div id="logsList" class="logs-console"></div>
 </div>
 
 <script type="module">
-    import { component, on } from '../lib/oja.full.esm.js';
+    import { component, on, ui, query, queryAll } from '../lib/oja.full.esm.js';
     import { store, getCreds } from '../js/store.js';
     import { fetchLogs } from '../js/api.js';
 
-    let paused = false;
-    let filter = store.get('logFilter') || 'ALL';
-    let logs =[];
-    let pollTimer = null;
-    let isAllExpanded = false; // Tracks the global expand/collapse state
+    // SVGs for pause ⏸ and resume ▶ — swapped on toggle
+    const ICON_PAUSE  = `<rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/>`;
+    const ICON_RESUME = `<polygon points="5 3 19 12 5 21 5 3"/>`;
+
+    let paused        = false;
+    let filter        = store.get('logFilter') || 'ALL';
+    let logs          = [];
+    let pollTimer     = null;
+    let isAllExpanded = false;
+
+    // ── Log parsing ────────────────────────────────────────────────────────────
+
+    function parseEntry(l) {
+        let lvl = 'INFO', msg = '', ts = '', fields = {};
+
+        if (typeof l === 'string') {
+            try {
+                const p = JSON.parse(l);
+                lvl    = p.lvl || p.level || 'INFO';
+                msg    = p.msg || p.message || l;
+                ts     = p.ts  || p.time   || '';
+                fields = p.fields ? { ...p.fields } : {};
+            } catch { msg = l; }
+        } else if (l && typeof l === 'object') {
+            lvl    = l.lvl || l.level || 'INFO';
+            msg    = l.msg || l.message || '';
+            ts     = l.ts  || l.time   || '';
+            fields = l.fields ? { ...l.fields } : {};
+        }
+
+        if (ts?.includes('T')) ts = ts.split('T')[1]?.split('.')[0] || ts;
+
+        // Promote common fields into the message line
+        let full = msg;
+        if (fields.method && fields.path) { full += ` ${fields.method} ${fields.path}`; delete fields.method; delete fields.path; }
+        if (fields.status)   { full += ` [${fields.status}]`;                              delete fields.status;   }
+        if (fields.duration) { full += ` (${(fields.duration / 1e6).toFixed(2)}ms)`;       delete fields.duration; }
+
+        return { lvl, ts, full, fields };
+    }
+
+    // ── Render ─────────────────────────────────────────────────────────────────
 
     function renderLogs() {
-        const el = document.getElementById('logsList');
+        const el = query('#logsList');
         if (!el) return;
 
         if (!logs.length) {
-            el.innerHTML = `<div style="color:var(--text-mute);text-align:center;padding:40px;"><span style="display:block;font-size:24px;margin-bottom:10px;">📭</span>No logs yet. Waiting for traffic...</div>`;
+            el.innerHTML = `<div style="color:var(--text-mute);text-align:center;padding:40px;">
+                <span style="display:block;font-size:24px;margin-bottom:10px;">📭</span>
+                No logs yet. Waiting for traffic...
+            </div>`;
             return;
         }
 
         const filtered = logs.filter(l => {
             if (filter === 'ALL') return true;
-            let lvl = 'INFO';
-            if (typeof l === 'object' && l) lvl = l.lvl || l.level || 'INFO';
-            else if (typeof l === 'string') {
-                if (l.includes('"lvl":"ERROR"') || l.includes('ERROR')) lvl = 'ERROR';
-                else if (l.includes('"lvl":"WARN"') || l.includes('WARN')) lvl = 'WARN';
-            }
-            return lvl === filter;
+            return parseEntry(l).lvl === filter;
         });
 
         if (!filtered.length) {
-            el.innerHTML = `<div style="color:var(--text-mute);text-align:center;padding:20px;">No logs for filter: ${filter}</div>`;
+            el.innerHTML = `<div style="color:var(--text-mute);text-align:center;padding:20px;">No ${filter} logs</div>`;
             return;
         }
 
         el.innerHTML = filtered.map(l => {
-            let lvl = 'INFO', msg = '', ts = '', fields = {};
+            const { lvl, ts, full, fields } = parseEntry(l);
+            const color   = lvl === 'ERROR' ? 'var(--danger)' : lvl === 'WARN' ? 'var(--warning)' : 'var(--text-mute)';
+            const hasJson = Object.keys(fields).length > 0 && window.app?.syntaxHighlight;
 
-            if (typeof l === 'string') {
-                try {
-                    const p = JSON.parse(l);
-                    lvl = p.lvl || p.level || 'INFO';
-                    msg = p.msg || p.message || l;
-                    ts = p.ts || p.time || '';
-                    fields = p.fields || {};
-                } catch {
-                    msg = l;
-                }
-            } else if (l && typeof l === 'object') {
-                lvl = l.lvl || l.level || 'INFO';
-                msg = l.msg || l.message || '';
-                ts = l.ts || l.time || '';
-                fields = l.fields || {};
-            }
+            const jsonToggle = hasJson
+                ? `<details class="log-details"${isAllExpanded ? ' open' : ''}>` +
+                `<summary class="log-json-toggle">{…}</summary>` +
+                `<div class="log-json-body">${window.app.syntaxHighlight(fields)}</div>` +
+                `</details>`
+                : '';
 
-            if (ts?.includes('T')) ts = ts.split('T')[1]?.split('.')[0] || ts;
-
-            let full = msg;
-            if (fields.method && fields.path) { full += ` ${fields.method} ${fields.path}`; delete fields.method; delete fields.path; }
-            if (fields.status) { full += ` [${fields.status}]`; delete fields.status; }
-            if (fields.duration) { full += ` (${(fields.duration / 1e6).toFixed(2)}ms)`; delete fields.duration; }
-
-            let extraJson = '';
-            if (Object.keys(fields).length > 0 && window.app?.syntaxHighlight) {
-                const openAttr = isAllExpanded ? 'open' : '';
-                extraJson = ` <details class="log-details" style="display:inline-block;vertical-align:top;" ${openAttr}><summary style="font-size:10px;color:var(--accent);cursor:pointer;user-select:none;outline:none;display:inline;font-weight:500;">{…}</summary>${window.app.syntaxHighlight(fields)}</details>`;
-            }
-
-            const color = lvl === 'ERROR' ? 'var(--danger)' : lvl === 'WARN' ? 'var(--warning)' : '#aaa';
-
-            return `<div class="log-entry" style="border-bottom:1px solid var(--border);padding:3px 0 5px;">
-            <div style="display:flex;gap:8px;align-items:baseline;">
-                <div class="log-ts">${ts}</div>
-                <div class="log-lvl" style="color:${color};font-weight:bold;width:45px;flex-shrink:0;">${lvl}</div>
-                <div class="log-msg">${full}${extraJson}</div>
-            </div>
-        </div>`;
+            return `<div class="log-entry">` +
+                `<span class="log-ts">${ts}</span>` +
+                `<span class="log-lvl" style="color:${color};">${lvl}</span>` +
+                `<span class="log-msg">${full} ${jsonToggle}</span>` +
+                `</div>`;
         }).join('');
     }
 
+    // ── Fetch ──────────────────────────────────────────────────────────────────
+
     async function fetchAndRender() {
         if (paused) return;
-        const lines = document.getElementById('logsTailSelect')?.value || '100';
+        const lines = query('#logsTailSelect')?.value || '100';
         const data  = await fetchLogs(getCreds(), lines);
         if (data && Array.isArray(data)) {
             logs = [...data].reverse();
@@ -115,83 +172,76 @@
         }
     }
 
+    // ── Export — clean JSON array, jq-compatible ───────────────────────────────
+
     async function exportLogs() {
-        const lines = document.getElementById('logsTailSelect')?.value || '100';
-        const data  = await fetchLogs(getCreds(), lines);
-        if (!data || !Array.isArray(data)) return;
+        const btn   = query('#logsExportBtn');
+        const lines = query('#logsTailSelect')?.value || '100';
+        ui.btn.loading(btn);
 
-        const text = data.map(l => {
-            if (typeof l === 'object' && l) {
-                const ts = l.ts || ''; const lvl = l.lvl || 'INFO'; const msg = l.msg || '';
-                let line = `[${ts}] ${lvl} - ${msg}`;
-                const f = l.fields || {};
-                if (f.method && f.path) line += ` ${f.method} ${f.path}`;
-                if (f.status) line += ` [${f.status}]`;
-                if (f.duration) line += ` (${(f.duration / 1e6).toFixed(2)}ms)`;
-                if (f.remote) line += ` from ${f.remote}`;
-                return line + '\n' + JSON.stringify(l);
+        const data = await fetchLogs(getCreds(), lines);
+        if (!data || !Array.isArray(data)) { ui.btn.reset(btn); return; }
+
+        const out = data.map(l => {
+            if (typeof l === 'string') {
+                try { return JSON.parse(l); } catch { return { raw: l }; }
             }
-            return typeof l === 'string' ? l : JSON.stringify(l);
-        }).join('\n---\n');
+            return l;
+        });
 
-        const a = Object.assign(document.createElement('a'), {
-            href: URL.createObjectURL(new Blob([text], { type: 'text/plain' })),
-            download: `agbero-logs-${new Date().toISOString().slice(0,19).replace(/:/g,'-')}.log`,
+        const blob = new Blob([JSON.stringify(out, null, 2)], { type: 'application/json' });
+        const a    = Object.assign(document.createElement('a'), {
+            href:     URL.createObjectURL(blob),
+            download: `agbero-logs-${new Date().toISOString().slice(0,19).replace(/:/g,'-')}.json`,
         });
         a.click();
         URL.revokeObjectURL(a.href);
-
-        const btn = document.getElementById('logsExportBtn');
-        if (btn) { const old = btn.textContent; btn.textContent = '✓ Exported'; setTimeout(() => btn.textContent = old, 2000); }
+        ui.btn.done(btn, '✓');
     }
 
-    // =========================================================================
-    // EXECUTE IMMEDIATELY
-    // =========================================================================
+    // ── Boot ───────────────────────────────────────────────────────────────────
 
-    // Sync initial filter from store to UI
-    if (filter) {
-        document.querySelectorAll('.chip').forEach(c => c.classList.remove('active'));
-        const activeChip = document.querySelector(`.chip[data-level="${filter}"]`);
-        if (activeChip) activeChip.classList.add('active');
-    }
+    queryAll('.chip').forEach(c => c.classList.remove('active'));
+    const activeChip = query(`.chip[data-level="${filter}"]`);
+    if (activeChip) activeChip.classList.add('active');
 
-    // Start polling
     fetchAndRender();
     pollTimer = setInterval(fetchAndRender, 2000);
 
-    // Event Listeners
+    // ── Events ─────────────────────────────────────────────────────────────────
+
     on('#logsPauseBtn', 'click', (e, btn) => {
         paused = !paused;
-        btn.textContent = paused ? 'Resume' : 'Pause';
+        btn.title = paused ? 'Resume live updates' : 'Pause live updates';
+        const svg = query('#logsPauseIcon');
+        if (svg) svg.innerHTML = paused ? ICON_RESUME : ICON_PAUSE;
     });
 
     on('#logsExpandAllBtn', 'click', () => {
         isAllExpanded = true;
-        document.querySelectorAll('.log-details').forEach(el => el.open = true);
+        queryAll('.log-details').forEach(el => el.open = true);
     });
 
     on('#logsCollapseAllBtn', 'click', () => {
         isAllExpanded = false;
-        document.querySelectorAll('.log-details').forEach(el => el.open = false);
+        queryAll('.log-details').forEach(el => el.open = false);
     });
 
-    on('#logsExportBtn', 'click', exportLogs);
-    on('#logsClearBtn', 'click', () => { logs =[]; renderLogs(); });
+    on('#logsExportBtn',  'click', exportLogs);
+    on('#logsClearBtn',   'click', () => { logs = []; renderLogs(); });
     on('#logsTailSelect', 'change', fetchAndRender);
 
     on('.chip', 'click', (e, chip) => {
-        document.querySelectorAll('.chip').forEach(c => c.classList.remove('active'));
+        queryAll('.chip').forEach(c => c.classList.remove('active'));
         chip.classList.add('active');
         filter = chip.dataset.level;
         store.set('logFilter', filter);
         renderLogs();
     });
 
-    // Cleanup when navigating away
     component.onUnmount(() => {
         if (pollTimer) clearInterval(pollTimer);
         paused = false;
-        logs =[];
+        logs   = [];
     });
 </script>

@@ -755,6 +755,24 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
 .code-box pre { margin: 0; white-space: pre-wrap; word-break: break-all; }
 
 /* ─── Logs console ───────────────────────────────────────────────────────── */
+/* ─── Logs toolbar ───────────────────────────────────────────────────────── */
+.logs-toolbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 12px;
+    flex-wrap: wrap;
+}
+.logs-toolbar-left,
+.logs-toolbar-right {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+/* ─── Logs console ───────────────────────────────────────────────────────── */
 .logs-console {
     background: var(--panel-bg);
     border: 1px solid var(--border);
@@ -766,13 +784,44 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
     font-size: 11px;
     line-height: 1.6;
 }
-.log-entry { display: flex; gap: 8px; padding: 1px 0; }
+
+.log-entry {
+    display: flex;
+    gap: 8px;
+    padding: 3px 0 4px;
+    border-bottom: 1px solid var(--border);
+    align-items: baseline;
+}
+.log-entry:last-child { border-bottom: none; }
 .log-ts    { color: var(--text-mute); white-space: nowrap; flex-shrink: 0; }
-.log-lvl   { white-space: nowrap; flex-shrink: 0; width: 40px; }
+.log-lvl   { white-space: nowrap; flex-shrink: 0; width: 45px; font-weight: 600; }
 .log-msg   { flex: 1; word-break: break-word; }
+
+/* JSON toggle — inline after message text */
+.log-details {
+    display: inline;
+}
+.log-json-toggle {
+    display: inline;
+    font-size: 10px;
+    color: var(--accent);
+    cursor: pointer;
+    user-select: none;
+    outline: none;
+    font-weight: 500;
+    margin-left: 4px;
+}
+.log-json-toggle::-webkit-details-marker { display: none; }
+/* Expanded body breaks below the row naturally */
+.log-json-body {
+    display: block;
+    margin-top: 4px;
+    margin-left: 0;
+}
 
 /* ─── Tables ─────────────────────────────────────────────────────────────── */
 .table-responsive { overflow-x: auto; }
+
 .simple-table { width: 100%; border-collapse: collapse; font-size: 13px; }
 .simple-table th {
     text-align: left; padding: 9px 12px;
@@ -1100,7 +1149,20 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
 #responseGraph { flex: 1; min-height: 0; }
 
 
-/* ─── Pagination ─────────────────────────────────────────────────────────── */
+/* Icon-only button — used in logs toolbar and anywhere text would be noisy */
+.icon-btn {
+    width: 30px;
+    height: 30px;
+    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    position: relative;
+}
+/* Native title tooltip is enough — no custom tooltip needed */
+
+
 .pg-controls {
     display: flex;
     align-items: center;

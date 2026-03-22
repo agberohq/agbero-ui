@@ -82,14 +82,14 @@
 </div>
 
 <script type="module">
-    import { on } from '../lib/oja.full.esm.js';
+    import { on, ui, clipboard, notify, query, queryAll } from '../lib/oja.full.esm.js';
     import { store, getCreds } from '../js/store.js';
     import { fetchConfig, fetchUptime } from '../js/api.js';
 
     let _prevConfig = null;
     let _currConfig = null;
 
-    const set = (id, v) => { const e = document.getElementById(id); if (e) e.innerText = v ?? '—'; };
+    const set = (id, v) => { const e = query('#' + id); if (e) e.innerText = v ?? '—'; };
 
     function formatBytes(b) {
         if (!b) return '0 B';
@@ -105,10 +105,17 @@
         return String(n);
     }
 
-    function formatUptime(seconds) {
-        if (!seconds) return '—';
-        const d = Math.floor(seconds / 86400), h = Math.floor((seconds % 86400) / 3600), m = Math.floor((seconds % 3600) / 60);
-        return[d>0&&`${d}d`, h>0&&`${h}h`, m>0&&`${m}m`].filter(Boolean).join(' ') || '<1m';
+    function formatUptime(val) {
+        if (!val) return '—';
+        // /uptime returns uptime as a Go duration string e.g. "11s", "2m30s", "1h5m2s"
+        if (typeof val === 'string') return val;
+        // fallback: integer seconds
+        const seconds = parseInt(val, 10);
+        if (isNaN(seconds)) return String(val);
+        const d = Math.floor(seconds / 86400);
+        const h = Math.floor((seconds % 86400) / 3600);
+        const m = Math.floor((seconds % 3600) / 60);
+        return [d > 0 && `${d}d`, h > 0 && `${h}h`, m > 0 && `${m}m`].filter(Boolean).join(' ') || '<1m';
     }
 
     function countBackends(host) {
@@ -148,12 +155,12 @@
         set('configPid', sys.pid || '—');
         set('configStartTime', sys.start_time ? new Date(sys.start_time).toLocaleString() : '—');
 
-        const titleEl = document.getElementById('configPageTitle');
+        const titleEl = query('#configPageTitle');
         if (titleEl) titleEl.innerHTML = `Configuration Overview <span style="font-size:14px;color:var(--text-mute);margin-left:10px;">v${g.version || '?'} (${g.build || 'dev'})</span>`;
     }
 
     function renderGlobalSettings(g) {
-        const el = document.getElementById('configGlobalDetails');
+        const el = query('#configGlobalDetails');
         if (!el || !g) return;
         const trusted = g.security?.trusted_proxies || [];
         const settings =[
@@ -169,7 +176,7 @@
     }
 
     function renderTlsSummary(certificates, config) {
-        const el = document.getElementById('configTlsSummary');
+        const el = query('#configTlsSummary');
         if (!el) return;
         const total = certificates.length;
         const valid = certificates.filter(c => c.daysLeft > 0).length;
@@ -181,23 +188,34 @@
             ['Expired', `<span class="badge error">${expired}</span>`],
         ].map(([l, v]) => `<div class="config-detail-item"><div class="config-detail-label">${l}</div><div class="config-detail-value">${v}</div></div>`).join('');
 
-        const noteEl = document.getElementById('configTlsNote');
+        const noteEl = query('#configTlsNote');
         if (noteEl && config.global?.lets_encrypt) {
             noteEl.innerHTML = `<span class="config-note-text">🔒 Auto-TLS: ${config.global.lets_encrypt.email || 'No email'} | Staging: ${config.global.lets_encrypt.staging ? 'Yes' : 'No'}</span>`;
         }
     }
 
     function renderRuntimeSettings(uptime) {
-        const el = document.getElementById('configRuntimeDetails');
+        const el = query('#configRuntimeDetails');
         if (!el || !uptime?.system) return;
         const sys = uptime.system;
         el.innerHTML = [
-            ['Goroutines', sys.num_goroutine || 0],['CPU Cores', sys.num_cpu || '—'],['Memory RSS', formatBytes(sys.mem_rss || 0)],['Memory Alloc', formatBytes(sys.mem_alloc || 0)],['GC Cycles', sys.num_gc || 0],['Uptime', formatUptime(sys.uptime_seconds)],
-        ].map(([l, v]) => `<div class="config-detail-item"><div class="config-detail-label">${l}</div><div class="config-detail-value">${v}</div></div>`).join('');
+            ['PID',          sys.pid        || '—'],
+            ['Uptime',       formatUptime(sys.uptime)],
+            ['Start Time',   sys.start_time ? new Date(sys.start_time).toLocaleString() : '—'],
+            ['Goroutines',   sys.num_goroutine || 0],
+            ['CPU Cores',    sys.num_cpu    || '—'],
+            ['Memory RSS',   formatBytes(sys.mem_rss   || 0)],
+            ['Memory Alloc', formatBytes(sys.mem_alloc || 0)],
+        ].map(([l, v]) =>
+            `<div class="config-detail-item">` +
+            `<div class="config-detail-label">${l}</div>` +
+            `<div class="config-detail-value">${v}</div>` +
+            `</div>`
+        ).join('');
     }
 
     function renderFeatureFlags(config) {
-        const el = document.getElementById('configFeatures');
+        const el = query('#configFeatures');
         if (!el) return;
         const features =[];
         if (config.global?.development) features.push({ name: 'Development Mode', icon: '🔧' });
@@ -225,7 +243,7 @@
     }
 
     function renderHostsSummary(hosts) {
-        const tbody = document.getElementById('configHostsBody');
+        const tbody = query('#configHostsBody');
         if (!tbody) return;
         if (!hosts || !Object.keys(hosts).length) {
             tbody.innerHTML = '<tr><td colspan="5"><div class="empty-state">No hosts configured</div></td></tr>';
@@ -243,8 +261,8 @@
     }
 
     function renderGitSection(gitStats) {
-        const section = document.getElementById('configGitSection');
-        const details = document.getElementById('configGitDetails');
+        const section = query('#configGitSection');
+        const details = query('#configGitDetails');
         if (!section || !details) return;
         const entries = Object.entries(gitStats || {});
         if (!entries.length) { section.style.display = 'none'; return; }
@@ -257,7 +275,7 @@
     }
 
     function renderRawConfig(config) {
-        const el = document.getElementById('configContent');
+        const el = query('#configContent');
         if (el && window.app?.syntaxHighlight) {
             el.innerHTML = window.app.syntaxHighlight(config);
         } else if (el) {
@@ -281,12 +299,10 @@
     }
 
     async function refresh() {
-        const btn = document.getElementById('configRefreshBtn');
-        if (btn) { btn.disabled = true; btn.textContent = '⟳ Loading…'; }
-
-        const [config, uptime] = await Promise.all([ fetchConfig(getCreds()), fetchUptime(getCreds()) ]);
-
-        if (btn) { btn.disabled = false; btn.textContent = '⟳ Refresh'; }
+        const btn = query('#configRefreshBtn');
+        ui.btn.loading(btn, '⟳ Loading…');
+        const [config, uptime] = await Promise.all([fetchConfig(getCreds()), fetchUptime(getCreds())]);
+        ui.btn.reset(btn);
         if (config && !config.__offline && !config.__unauthorized) {
             store.set('lastConfig', config);
             store.set('lastUptime', uptime);
@@ -302,16 +318,15 @@
 
     on('#configRefreshBtn', 'click', refresh);
 
-    on('.config-copy', 'click', () => {
-        const text = document.getElementById('configContent')?.innerText || '';
-        navigator.clipboard?.writeText(text).then(() => {
-            const btn = document.querySelector('.config-copy');
-            if (btn) { const old = btn.textContent; btn.textContent = '✓ Copied'; setTimeout(() => btn.textContent = old, 2000); }
-        }).catch(() => {});
+    on('.config-copy', 'click', (e, btn) => {
+        const text = query('#configContent')?.innerText || '';
+        clipboard.copy(text)
+            .then(() => notify.show('Copied', 'success'))
+            .catch(() => notify.show('Copy failed', 'error'));
     });
 
     on('.config-expand', 'click', (e, btn) => {
-        const box = document.getElementById('configContent');
+        const box = query('#configContent');
         if (!box) return;
         const expanded = box.style.maxHeight === 'none';
         box.style.maxHeight = expanded ? '300px' : 'none';
@@ -319,8 +334,8 @@
     });
 
     on('#configDiffBtn', 'click', () => {
-        const section = document.getElementById('configDiffSection');
-        const diffEl = document.getElementById('configDiff');
+        const section = query('#configDiffSection');
+        const diffEl = query('#configDiff');
         if (!section || !diffEl) return;
 
         if (section.style.display !== 'none') { section.style.display = 'none'; return; }

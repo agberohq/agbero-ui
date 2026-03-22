@@ -54,8 +54,6 @@
         </div>
     </div>
 
-     <div style="display: block; height: 30px"></div>
-
     <!-- Response time chart -->
     <div class="chart-wrapper">
         <div class="chart-controls">
@@ -68,7 +66,7 @@
 </div>
 
 <script type="module">
-    import { component, listen, emit, chart, on } from '../lib/oja.full.esm.js';
+    import { component, listen, emit, chart, on, query, queryAll } from '../lib/oja.full.esm.js';
     import { store } from '../js/store.js';
 
     let mainChart = null;
@@ -100,8 +98,8 @@
     // ── Panel renderers ────────────────────────────────────────────────────────
 
     function renderCerts(certs) {
-        const el = document.getElementById('certBriefing');
-        const sum = document.getElementById('certSummary');
+        const el = query('#certBriefing');
+        const sum = query('#certSummary');
         if (!el) return;
 
         if (!certs || !certs.length) {
@@ -127,8 +125,8 @@
     }
 
     function renderTopHosts(hosts) {
-        const el  = document.getElementById('hostBriefing');
-        const sub = document.getElementById('hostBriefSub');
+        const el  = query('#hostBriefing');
+        const sub = query('#hostBriefSub');
         if (!el) return;
 
         const entries = Object.entries(hosts || {})
@@ -161,8 +159,8 @@
     }
 
     function renderErrorHotspots(hosts) {
-        const el  = document.getElementById('errorBriefing');
-        const sub = document.getElementById('errorBriefSub');
+        const el  = query('#errorBriefing');
+        const sub = query('#errorBriefSub');
         if (!el) return;
 
         // Collect per-backend failure counts across all hosts/routes
@@ -217,24 +215,25 @@
             (h.proxies || []).forEach(p => (p.backends || []).forEach(b => tErrs += b.failures || 0));
         }
 
-        const metaEl = document.getElementById('welcomeMeta');
+        const metaEl = query('#welcomeMeta');
         if (metaEl) metaEl.textContent = [
             version,
+            payload.system?.uptime || '',
             `${hc} host${hc !== 1 ? 's' : ''}`,
             `${rc} route${rc !== 1 ? 's' : ''}`,
         ].filter(Boolean).join(' · ');
 
         // Health bar
-        const bar = document.getElementById('globalHealthBar');
+        const bar = query('#globalHealthBar');
         if (bar) {
             const errPct  = tReqs > 0 ? (tErrs / tReqs) * 100 : 0;
             const succPct = Math.max(0, 100 - errPct);
             bar.innerHTML = `<div class="hb-seg hb-ok" style="width:${succPct}%"></div><div class="hb-seg hb-err" style="width:${errPct}%"></div>`;
-            const errText = document.getElementById('errorRateText');
+            const errText = query('#errorRateText');
             if (errText) errText.textContent = `${tReqs > 0 ? ((tErrs / tReqs) * 100).toFixed(1) : '0.0'}% errors`;
         }
 
-        const timeEl = document.getElementById('lastUpdatedText');
+        const timeEl = query('#lastUpdatedText');
         if (timeEl) timeEl.textContent = 'Updated ' + new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 
         // Three panels — all different data from the footer
@@ -267,7 +266,7 @@
 
     // Welcome: extract username from JWT user claim
     (function setWelcomeName() {
-        const el = document.getElementById('welcomeName');
+        const el = query('#welcomeName');
         if (!el) return;
         try {
             const token = localStorage.getItem('ag_auth_token');
@@ -280,9 +279,18 @@
     // Paint certs immediately from store (populated at boot by loadConfigData)
     renderCerts(store.get('certificates') || []);
 
-    // Paint chart from cached history
+    // Paint chart from cached history, and welcome meta from cached system
     const cachedHistory = store.get('metricsHistory');
     if (cachedHistory) refreshChart(cachedHistory);
+
+    const cachedSystem = store.get('lastUptime')?.system;
+    if (cachedSystem) {
+        const metaEl = query('#welcomeMeta');
+        if (metaEl && metaEl.textContent === '—') {
+            const version = store.get('sys.version') || '';
+            metaEl.textContent = [version, cachedSystem.uptime || ''].filter(Boolean).join(' · ');
+        }
+    }
 
     // Subscribe to global metrics — no independent poll
     unsub = listen('metrics:updated', processMetrics);
@@ -297,7 +305,7 @@
 
     // Chart tabs
     on('.chart-tab', 'click', (e, tab) => {
-        document.querySelectorAll('.chart-tab').forEach(t => t.classList.remove('active'));
+        queryAll('.chart-tab').forEach(t => t.classList.remove('active'));
         tab.classList.add('active');
         store.set('activeChart', tab.dataset.type);
         refreshChart();
