@@ -87,6 +87,11 @@
         <form id="loginForm">
             <input type="text" id="username" placeholder="Username" autocomplete="username" required>
             <input type="password" id="password" placeholder="Password" autocomplete="current-password" required>
+            <div id="loginTOTPRow" style="display:none;">
+                <input type="text" id="totp" placeholder="Authenticator code (6 digits)"
+                       autocomplete="one-time-code" inputmode="numeric" pattern="[0-9]*"
+                       maxlength="6" style="letter-spacing:0.2em;text-align:center;">
+            </div>
             <button type="submit" class="btn primary" style="width:100%;margin-top:4px;">Sign In</button>
         </form>
         <div id="loginError" style="color:var(--danger);font-size:11px;margin-top:10px;display:none;text-align:center;"></div>
@@ -128,48 +133,9 @@
 </div>
 
 <div class="modal-overlay" id="addHostModal">
-    <div class="modal">
-        <h3 id="addHostModalTitle">Add Host</h3>
-        <form id="addHostForm">
-            <label style="font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:var(--text-mute);">Domain</label>
-            <input type="text" id="ahDomain" placeholder="api.example.com" required>
-            <label style="font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:var(--text-mute);">Route Path</label>
-            <input type="text" id="ahPath" placeholder="/" value="/" required>
-
-            <label style="font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:var(--text-mute);">Mode</label>
-            <select id="ahMode" style="margin-bottom:14px;">
-                <option value="proxy">Proxy to Backend</option>
-                <option value="static">Serve Static Files</option>
-            </select>
-
-            <div id="ahProxySection">
-                <label style="font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:var(--text-mute);">Backend URL</label>
-                <input type="text" id="ahBackend" placeholder="http://10.0.0.5:8080 or unix:/run/app.sock">
-                <label style="font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:var(--text-mute);">Strategy</label>
-                <select id="ahStrategy">
-                    <option value="round_robin">Round Robin</option>
-                    <option value="least_conn">Least Connections</option>
-                    <option value="least_response_time">Least Response Time</option>
-                    <option value="weighted_least_conn">Weighted Least Connections</option>
-                    <option value="ip_hash">IP Hash</option>
-                    <option value="url_hash">URL Hash</option>
-                    <option value="consistent_hash">Consistent Hash</option>
-                    <option value="sticky">Sticky</option>
-                    <option value="adaptive">Adaptive</option>
-                    <option value="power_of_two">Power of Two</option>
-                    <option value="random">Random</option>
-                </select>
-            </div>
-
-            <div id="ahStaticSection" style="display:none;">
-                <label style="font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:var(--text-mute);">Web Root</label>
-                <input type="text" id="ahWebRoot" placeholder="/var/www/html">
-            </div>
-
-            <div id="addHostError" style="color:var(--danger);font-size:11px;margin-bottom:8px;display:none;background:rgba(255,59,48,0.08);padding:8px;border-radius:4px;"></div>
-            <button type="submit" class="btn primary" style="width:100%;">Save Host</button>
-            <button type="button" class="btn close-modal" style="margin-top:5px;width:100%;">Cancel</button>
-        </form>
+    <div class="modal modal-wizard">
+        <button class="modal-close-x close-modal" title="Close">&times;</button>
+        <div id="addHostWizardMount"></div>
     </div>
 </div>
 
@@ -240,15 +206,6 @@
     </div>
 </div>
 
-<!-- SESSION EXPIRY -->
-<div class="session-warning" id="sessionWarning">
-    <span>🔐 Session expires in <span id="sessionExpiryTime">5m 0s</span></span>
-    <div class="session-warning-actions">
-        <button id="refreshSessionBtn" class="btn small" title="Renew session">↺ Renew</button>
-        <button id="dismissSessionBtn" class="btn small" title="Dismiss">✕</button>
-    </div>
-</div>
-
 <!-- DRAWERS -->
 <div class="drawer-backdrop" id="drawerBackdrop"></div>
 <div class="drawer" id="routeDrawer">
@@ -258,6 +215,7 @@
             <h2 id="drawerRoutePath">/</h2>
             <div style="display:flex;align-items:center;gap:8px;">
                 <span id="drawerHostName" class="clickable-host" data-action="filter-host">example.com</span>
+                <div id="drawerSparkline" style="opacity:0.75;" title="Requests/sec — last 60s"></div>
                 <button id="drawerPerfBtn" class="btn small" style="font-size:10px;padding:3px 8px;opacity:0.7;">📈 Perf</button>
             </div>
         </div>
@@ -278,10 +236,13 @@
 </div>
 
 <script type="module">
-    import { modal, layout, emit, listen, chart, on, auth, ui, query } from '../lib/oja.full.esm.js';
-    import { store, getCreds, isLoggedIn, setCredentials, clearCredentials, getHost, setHost } from '../js/store.js';
-    import { fetchTelemetry, login, addFirewallRule, broadcastClusterRoute, addHost, deleteHost } from '../js/api.js';
-    import { loadConfigData } from '../js/main.js';
+    import { modal, layout, emit, listen, chart, on, auth, ui, query, queryAll, notify, wizard, collapse, tabs } from '../lib/oja.full.esm.js';
+    import { store, isLoggedIn, clearCredentials, getHost, setHost } from '../js/store.js';
+    import { fetchTelemetry, login, fetchStatus, addFirewallRule, broadcastClusterRoute,
+        addHost, addHostHCL, checkHostExists, deleteHost } from '../js/api.js';
+    import { buildHostConfig } from '../js/host-builder.js';
+    // Shell emits events for app-level actions — main.js owns the responses.
+    // No imports from main.js — that would create a circular dependency.
     let _perfCharts = null;
 
     // JSON Syntax Highlighter wrapper (Outputs beautifully themed <pre> block)
@@ -301,30 +262,30 @@
 
     function updateNodeDisplay() {
         const h = getHost();
-        document.getElementById('targetHostBtn')?.setAttribute('data-host', h || 'local');
-        if (document.getElementById('loginNodeDisplay')) document.getElementById('loginNodeDisplay').textContent = h || 'local';
-        if (document.getElementById('loginTargetHost')) document.getElementById('loginTargetHost').value = h;
+        query('#targetHostBtn')?.setAttribute('data-host', h || 'local');
+        if (query('#loginNodeDisplay')) query('#loginNodeDisplay').textContent = h || 'local';
+        if (query('#loginTargetHost')) query('#loginTargetHost').value = h;
     }
     updateNodeDisplay();
 
     on('#loginEditNodeBtn', 'click', () => {
-        const el = document.getElementById('loginNodeEdit');
+        const el = query('#loginNodeEdit');
         el.style.display = el.style.display === 'flex' ? 'none' : 'flex';
     });
     on('#loginResetHostBtn', 'click', () => {
-        document.getElementById('loginTargetHost').value = '';
+        query('#loginTargetHost').value = '';
         setHost(''); updateNodeDisplay();
-        document.getElementById('loginNodeEdit').style.display = 'none';
+        query('#loginNodeEdit').style.display = 'none';
     });
     on('#loginSaveHostBtn', 'click', () => {
-        const val = document.getElementById('loginTargetHost').value.trim();
+        const val = query('#loginTargetHost').value.trim();
         setHost(val); updateNodeDisplay();
-        document.getElementById('loginNodeEdit').style.display = 'none';
+        query('#loginNodeEdit').style.display = 'none';
     });
 
     on('#themeToggle', 'click', () => { ui.theme.toggle(); });
 
-    on('#targetHostBtn', 'click', () => { document.getElementById('targetHostInput').value = getHost(); modal.open('targetHostModal'); });
+    on('#targetHostBtn', 'click', () => { query('#targetHostInput').value = getHost(); modal.open('targetHostModal'); });
     on('#targetHostForm', 'submit', (e, el) => {
         e.preventDefault(); setHost(el.querySelector('#targetHostInput').value.trim());
         modal.closeAll(); window.location.reload();
@@ -337,36 +298,70 @@
             store.set('auth.isLoggedIn', false);
             window._isPolling = false; window._latencyStarted = false;
         }
-        updateNodeDisplay(); modal.open('loginModal');
+        updateNodeDisplay();
+
+        // Fetch server status to know whether to show OTP field
+        const status = await fetchStatus();
+        const totpRow = query('#loginTOTPRow');
+        if (totpRow) totpRow.style.display = status?.totp ? '' : 'none';
+
+        modal.open('loginModal');
+
+        // Focus username (or OTP if already filled)
+        requestAnimationFrame(() => {
+            const u = query('#username');
+            if (u && !u.value) u.focus();
+        });
     });
 
     on('#loginForm', 'submit', async (e, el) => {
         e.preventDefault();
-        const errEl = document.getElementById('loginError'); errEl.style.display = 'none';
+        const errEl     = query('#loginError');
+        const submitBtn = el.querySelector('[type="submit"]');
+        if (errEl) { errEl.style.display = 'none'; errEl.textContent = ''; }
+
         const targetVal = el.querySelector('#loginTargetHost')?.value?.trim();
         if (targetVal !== undefined) { setHost(targetVal); updateNodeDisplay(); }
 
-        const submitBtn = el.querySelector('[type="submit"]'); submitBtn.disabled = true; submitBtn.textContent = 'Signing in…';
-        const result = await login(el.querySelector('#username').value, el.querySelector('#password').value);
-        submitBtn.disabled = false; submitBtn.textContent = 'Sign In';
+        submitBtn.disabled = true; submitBtn.textContent = 'Signing in…';
 
-        if (!result) { errEl.textContent = 'Login failed.'; errEl.style.display = 'block'; return; }
-        setCredentials(result.type, result.token);
-        await auth.session.start(result.token);
-        startLatencyChecks();
+        try {
+            const totpVal = (query('#totp')?.value || '').trim();
+            const result  = await login(
+                el.querySelector('#username').value,
+                el.querySelector('#password').value,
+                totpVal,
+            );
+            submitBtn.disabled = false; submitBtn.textContent = 'Sign In';
+            emit('auth:login:success', { type: result.type, token: result.token });
+            checkLatency();
+        } catch (err) {
+            submitBtn.disabled = false; submitBtn.textContent = 'Sign In';
+            const msg = err.message || 'Login failed';
+            if (errEl) { errEl.textContent = msg; errEl.style.display = 'block'; }
+            // If OTP related error, focus the OTP field
+            if (msg.toLowerCase().includes('totp') || msg.toLowerCase().includes('code')) {
+                const totpField = query('#totp');
+                if (totpField) {
+                    query('#loginTOTPRow').style.display = '';
+                    totpField.value = '';
+                    totpField.focus();
+                }
+            }
+        }
     });
 
-    on('.modal-overlay', 'click', (e, overlay) => { if (e.target === overlay && overlay.id !== 'loginModal') modal.closeAll(); });
-    on('.close-modal', 'click', () => modal.closeAll());
+    // .close-modal delegation is handled by Oja modal.js — no duplicate needed.
+    // Modal overlay click-outside handled by Oja's built-in backdrop.
 
     on('#ruleForm', 'submit', async (e, form) => {
         e.preventDefault();
-        const errEl = document.getElementById('ruleError');
+        const errEl = query('#ruleError');
         errEl.style.display = 'none';
         const submitBtn = form.querySelector('[type="submit"]');
         ui.btn.loading(submitBtn, 'Blocking…');
         try {
-            await addFirewallRule(getCreds(), {
+            await addFirewallRule({
                 ip: form.querySelector('#fwIp').value.trim(),
                 reason: form.querySelector('#fwReason').value.trim(),
                 path: form.querySelector('#fwPath').value.trim(),
@@ -383,56 +378,1048 @@
         }
     });
 
-    // Add Host — mode toggle
-    on('#ahMode', 'change', (e, sel) => {
-        document.getElementById('ahProxySection').style.display = sel.value === 'proxy' ? '' : 'none';
-        document.getElementById('ahStaticSection').style.display = sel.value === 'static' ? '' : 'none';
+    // ── Add Host Wizard ───────────────────────────────────────────────────────
+    // Opened by #addHostBtn (hosts.html). Uses oja/wizard.js for step-by-step flow.
+
+    let _addHostWizard = null;
+
+    listen('host:open-add-wizard', () => {
+        const mount = query('#addHostWizardMount');
+        if (!mount) return;
+        if (_addHostWizard) { _addHostWizard.destroy(); _addHostWizard = null; }
+
+        // If a draft exists, show a resume banner inside the mount before building
+        const existingDraft = (() => {
+            try { return JSON.parse(store.get('wz.draft') || 'null'); } catch { return null; }
+        })();
+
+        if (existingDraft?.host_type) {
+            mount.innerHTML = `<div style="padding:24px;text-align:center;">
+                <div style="font-size:13px;margin-bottom:16px;color:var(--text-main);">
+                    You have an unfinished host configuration
+                    <strong>${existingDraft.domain ? '(' + existingDraft.domain + ')' : ''}</strong>.
+                </div>
+                <div style="display:flex;gap:10px;justify-content:center;">
+                    <button id="wzResumeDraft" class="btn primary">Resume</button>
+                    <button id="wzDiscardDraft" class="btn">Start fresh</button>
+                </div>
+            </div>`;
+
+            mount.querySelector('#wzResumeDraft').addEventListener('click', () => {
+                _addHostWizard = buildAddHostWizard(mount);
+            });
+            mount.querySelector('#wzDiscardDraft').addEventListener('click', () => {
+                store.set('wz.draft', null);
+                _addHostWizard = buildAddHostWizard(mount);
+            });
+        } else {
+            _addHostWizard = buildAddHostWizard(mount);
+        }
+
+        modal.open('addHostModal');
     });
 
-    on('#addHostForm', 'submit', async (e, form) => {
-        e.preventDefault();
-        const errEl = document.getElementById('addHostError'); errEl.style.display = 'none';
-        const domain  = form.querySelector('#ahDomain').value.trim();
-        const path    = form.querySelector('#ahPath').value.trim() || '/';
-        const mode    = form.querySelector('#ahMode').value;
-        const backend = form.querySelector('#ahBackend').value.trim();
-        const webRoot = form.querySelector('#ahWebRoot')?.value.trim();
-
-        if (mode === 'proxy' && !backend) {
-            errEl.textContent = 'Backend URL is required for proxy mode.';
-            errEl.style.display = 'block'; return;
+    // Clean up wizard instance when the add-host modal closes
+    listen('modal:close', ({ id }) => {
+        if (id === 'addHostModal' && _addHostWizard) {
+            _addHostWizard.destroy();
+            _addHostWizard = null;
         }
-        if (mode === 'static' && !webRoot) {
-            errEl.textContent = 'Web Root path is required for static mode.';
-            errEl.style.display = 'block'; return;
+    });
+
+    // ── Draft persistence helpers ─────────────────────────────────────────────
+    const DRAFT_KEY = 'wz.draft';
+    function saveDraft(data)  { store.set(DRAFT_KEY, JSON.stringify(data)); }
+    function loadDraft()      { try { return JSON.parse(store.get(DRAFT_KEY) || 'null'); } catch { return null; } }
+    function clearDraft()     { store.set(DRAFT_KEY, null); }
+
+    // ── Path picker helper — File System Access API with graceful fallback ────
+    async function pickFolder(inputEl) {
+        if (window.showDirectoryPicker) {
+            try {
+                const dh = await window.showDirectoryPicker();
+                if (inputEl) inputEl.value = dh.name;
+                return dh.name;
+            } catch(e) { /* user cancelled */ }
+        }
+    }
+
+    // ── Sparkline SVG helper (shared between hosts.html and the route drawer) ──
+    function buildSparklineSVG(vals, W = 84, H = 28) {
+        if (!vals || vals.length < 2) return '';
+        const P = 3, iW = W - P * 2, iH = H - P * 2;
+        const max = Math.max(...vals, 0.001), n = vals.length;
+        const xS = i => (P + (i / Math.max(n - 1, 1)) * iW).toFixed(1);
+        const yS = v => (P + iH - (v / max) * iH).toFixed(1);
+        const pts  = vals.map((v, i) => `${xS(i)},${yS(v)}`).join(' ');
+        const fX   = xS(0), lX = xS(n - 1), bY = (P + iH).toFixed(1);
+        const area = `M${fX},${bY} ` + vals.map((v, i) => `L${xS(i)},${yS(v)}`).join(' ') + ` L${lX},${bY} Z`;
+        const color = vals.some(v => v > 0) ? 'var(--accent)' : 'var(--text-mute)';
+        const gid   = 'sk_d' + Math.random().toString(36).slice(2, 8);
+        return `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" style="display:block;overflow:visible;">
+            <defs><linearGradient id="${gid}" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stop-color="${color}" stop-opacity="0.25"/>
+                <stop offset="100%" stop-color="${color}" stop-opacity="0.02"/>
+            </linearGradient></defs>
+            <path d="${area}" fill="url(#${gid})"/>
+            <polyline points="${pts}" fill="none" stroke="${color}" stroke-width="1.5"
+                stroke-linejoin="round" stroke-linecap="round"/>
+            <circle cx="${xS(n-1)}" cy="${yS(vals[n-1])}" r="2.5"
+                fill="${color}" stroke="var(--bg)" stroke-width="1.5"/>
+        </svg>`;
+    }
+
+    // Draw sparkline into the route drawer header whenever a route drawer opens
+    listen('drawer:open-route', ({ host }) => {
+        requestAnimationFrame(() => {
+            const el = query('#drawerSparkline');
+            if (!el) return;
+            const spark = store.get('sparklines.' + host);
+            if (spark?.rps?.length >= 2) el.innerHTML = buildSparklineSVG(spark.rps, 100, 32);
+        });
+    });
+
+    function buildAddHostWizard(mount) {
+        // ── Per-route state ───────────────────────────────────────────────────
+        // Each route is an object:
+        // { id, path, engine (web|proxy|serverless), engineData, extras, auth }
+        let routes = [_newRoute('/')];
+        let activeRouteId = routes[0].id;
+        let routeTabHandle = null;
+
+        function _newRoute(path) {
+            return {
+                id:         'r' + Date.now() + Math.random().toString(36).slice(2, 6),
+                path:       path || '/',
+                engine:     '',
+                engineData: {},
+                extras:     {},
+                authData:   {},
+            };
         }
 
-        let routeBlock = { enabled: 'on', path };
-        if (mode === 'proxy') {
-            routeBlock.backends = { enabled: 'on', strategy: form.querySelector('#ahStrategy').value, servers: [{ address: backend, weight: 1 }] };
-        } else {
-            routeBlock.web = { enabled: 'on', root: webRoot, listing: true };
+        // ── Restore draft if present ─────────────────────────────────────────
+        const draft = loadDraft();
+        let draftType = '';
+        if (draft) {
+            draftType = draft.host_type || '';
+            if (draft.routes?.length) routes = draft.routes;
+            activeRouteId = routes[0]?.id || '';
         }
 
-        const btn = form.querySelector('[type="submit"]');
-        ui.btn.loading(btn, 'Saving…');
+        // ── Step 1: Host Type ────────────────────────────────────────────────
+        function stepTypeHTML() {
+            const sel = draftType;
+            return `
+            <div class="wz-type-grid">
+                <button type="button" class="wz-type-card${sel==='web'?' selected':''}" data-wizard-field="host_type" data-value="web" data-action="wz-type-pick">
+                    <span class="wz-type-icon">🌐</span>
+                    <strong>Web / Frontend</strong>
+                    <span>Static files, SPA, PHP, Git deploy</span>
+                </button>
+                <button type="button" class="wz-type-card${sel==='proxy'?' selected':''}" data-wizard-field="host_type" data-value="proxy" data-action="wz-type-pick">
+                    <span class="wz-type-icon">⚡</span>
+                    <strong>Backend / Proxy</strong>
+                    <span>Reverse proxy to upstream services</span>
+                </button>
+                <button type="button" class="wz-type-card${sel==='serverless'?' selected':''}" data-wizard-field="host_type" data-value="serverless" data-action="wz-type-pick">
+                    <span class="wz-type-icon">λ</span>
+                    <strong>Serverless</strong>
+                    <span>REST proxies &amp; managed workers</span>
+                </button>
+                <button type="button" class="wz-type-card${sel==='advanced'?' selected':''}" data-wizard-field="host_type" data-value="advanced" data-action="wz-type-pick">
+                    <span class="wz-type-icon">⚙️</span>
+                    <strong>Advanced</strong>
+                    <span>Write config JSON directly</span>
+                </button>
+            </div>
+            <input type="hidden" id="wzHostType" data-wizard-field="host_type" value="${sel}">`;
+        }
+
+        // ── Step 2: Domain & TLS ─────────────────────────────────────────────
+        // Returns true if domain should not have TLS (local/dev domains)
+        function _isLocalDomain(domain) {
+            const d = (domain || '').trim().toLowerCase();
+            if (!d) return false;
+            // IP addresses
+            if (/^\d+\.\d+\.\d+\.\d+$/.test(d)) return true;
+            if (d === 'localhost') return true;
+            if (d.endsWith('.localhost')) return true;
+            if (d.endsWith('.local')) return true;
+            if (d.endsWith('.internal')) return true;
+            if (d.endsWith('.test')) return true;
+            if (d.endsWith('.example')) return true;
+            return false;
+        }
+
+        function stepDomainHTML() {
+            const d = draft || {};
+            const isLocal = _isLocalDomain(d.domain);
+            return `
+            <div class="wz-field-group">
+                <label class="wz-label">Domain <span style="color:var(--danger)">*</span></label>
+                <div style="position:relative;">
+                    <input type="text" data-wizard-field="domain" id="wzDomainInput" class="wz-input"
+                           placeholder="app.example.com" autocomplete="off" spellcheck="false"
+                           value="${d.domain||''}">
+                    <span id="wzDomainStatus" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);font-size:11px;"></span>
+                </div>
+                <div class="wz-hint">No protocol prefix — e.g. <code>app.example.com</code> or <code>localhost</code></div>
+            </div>
+            <div class="wz-field-group" id="wzTLSSection" style="display:${isLocal?'none':''};">
+                <label class="wz-label">TLS Mode</label>
+                <div class="wz-radio-group">
+                    <label class="wz-radio"><input type="radio" name="tls_mode" data-wizard-field="tls_mode" value="auto"${(!d.tls_mode||d.tls_mode==='auto')?' checked':''}> <span>Auto — Let's Encrypt (recommended)</span></label>
+                    <label class="wz-radio"><input type="radio" name="tls_mode" data-wizard-field="tls_mode" value="local"${d.tls_mode==='local'?' checked':''}> <span>Local certificate (provide cert + key file paths)</span></label>
+                    <label class="wz-radio"><input type="radio" name="tls_mode" data-wizard-field="tls_mode" value="none"${d.tls_mode==='none'?' checked':''}> <span>None (HTTP only)</span></label>
+                </div>
+            </div>
+            <div class="wz-field-group" id="wzLocalCertFields" style="display:${d.tls_mode==='local'&&!isLocal?'':'none'};">
+                <label class="wz-label">Certificate file <span style="color:var(--danger)">*</span></label>
+                <div class="wz-path-row">
+                    <input type="text" data-wizard-field="tls_cert" id="wzTLSCert" class="wz-input"
+                           placeholder="/etc/ssl/certs/example.pem" value="${d.tls_cert||''}">
+                </div>
+                <label class="wz-label" style="margin-top:8px;">Key file <span style="color:var(--danger)">*</span></label>
+                <div class="wz-path-row">
+                    <input type="text" data-wizard-field="tls_key" id="wzTLSKey" class="wz-input"
+                           placeholder="/etc/ssl/private/example.key" value="${d.tls_key||''}">
+                </div>
+                <div class="wz-hint" style="margin-top:6px;">Both paths must be absolute and readable by the Agbero process.</div>
+            </div>`;
+        }
+
+        function _wireDomainStep(bodyEl) {
+            const domainInput  = bodyEl.querySelector('#wzDomainInput');
+            const tlsSection   = bodyEl.querySelector('#wzTLSSection');
+            const certFields   = bodyEl.querySelector('#wzLocalCertFields');
+            const statusEl     = bodyEl.querySelector('#wzDomainStatus');
+            let _checkTimer    = null;
+
+            function updateTLSVisibility() {
+                const isLocal = _isLocalDomain(domainInput?.value);
+                if (tlsSection) tlsSection.style.display = isLocal ? 'none' : '';
+                // If local, hide cert fields too regardless of radio state
+                if (isLocal && certFields) certFields.style.display = 'none';
+                if (isLocal) {
+                    // Deselect any radio, effectively omitting TLS from config
+                    bodyEl.querySelectorAll('[name="tls_mode"]').forEach(r => r.checked = false);
+                }
+            }
+
+            function updateCertVisibility() {
+                const localRadio = bodyEl.querySelector('[name="tls_mode"][value="local"]');
+                const isLocal    = _isLocalDomain(domainInput?.value);
+                if (certFields) certFields.style.display =
+                    (!isLocal && localRadio?.checked) ? '' : 'none';
+            }
+
+            bodyEl.querySelectorAll('[name="tls_mode"]').forEach(r => {
+                r.addEventListener('change', updateCertVisibility);
+            });
+
+            domainInput?.addEventListener('input', () => {
+                updateTLSVisibility();
+                updateCertVisibility();
+                // Debounce collision check
+                clearTimeout(_checkTimer);
+                statusEl.textContent = '';
+                const val = (domainInput.value || '').trim().toLowerCase();
+                if (!val || val.includes('://') || val.length < 3) return;
+                _checkTimer = setTimeout(async () => {
+                    try {
+                        const exists = await checkHostExists(val);
+                        if (exists) {
+                            statusEl.textContent = '⚠ already exists';
+                            statusEl.style.color = 'var(--warning)';
+                        } else {
+                            statusEl.textContent = '✓ available';
+                            statusEl.style.color = 'var(--success)';
+                        }
+                    } catch { statusEl.textContent = ''; }
+                }, 600);
+            });
+
+            // Initial state
+            updateTLSVisibility();
+            updateCertVisibility();
+        }
+
+        // ── Step 3: Routes (tabbed) ──────────────────────────────────────────
+        function stepRoutesHTML() {
+            return `
+            <div id="wzRouteTabs" style="margin-bottom:10px;"></div>
+            <div id="wzRoutePanels"></div>
+            <button type="button" class="btn small" id="wzAddRouteBtn" style="margin-top:10px;">+ Add Route</button>
+            <input type="hidden" data-wizard-field="routes_data" id="wzRoutesDataField" value="[]">`;
+        }
+
+        function _wireRoutesStep(bodyEl) {
+            const tabNavEl  = bodyEl.querySelector('#wzRouteTabs');
+            const panelsEl  = bodyEl.querySelector('#wzRoutePanels');
+            const addRouteBtn = bodyEl.querySelector('#wzAddRouteBtn');
+            const fieldEl   = bodyEl.querySelector('#wzRoutesDataField');
+            const hostType  = w.data().host_type || 'proxy';
+
+            function syncField() {
+                if (fieldEl) fieldEl.value = JSON.stringify(routes);
+            }
+
+            function renderRoutePanel(route) {
+                const el = document.createElement('div');
+                el.setAttribute('data-tab', route.id);
+                el.style.padding = '2px 0';
+
+                // Path input
+                const pathRow = document.createElement('div');
+                pathRow.className = 'wz-field-group';
+                pathRow.innerHTML = `<label class="wz-label">Route Path</label>
+                    <input type="text" class="wz-input wz-route-path" placeholder="/api" value="${route.path}">
+                    <div class="wz-hint">Must start with <code>/</code></div>`;
+                pathRow.querySelector('.wz-route-path').addEventListener('input', e => {
+                    route.path = e.target.value;
+                    syncField();
+                    // Update tab label
+                    if (routeTabHandle) {
+                        const tabDefs = routes.map((r, i) => ({
+                            key: r.id,
+                            label: (r.path || '/') + (routes.length > 1 ? '' : ''),
+                        }));
+                    }
+                });
+                el.appendChild(pathRow);
+
+                // Sub-tabs: Engine | Extras | Auth
+                const subTabNav = document.createElement('div');
+                subTabNav.id = 'wzSubTabs_' + route.id;
+                const subPanels = document.createElement('div');
+                subPanels.id = 'wzSubPanels_' + route.id;
+                el.appendChild(subTabNav);
+                el.appendChild(subPanels);
+
+                // Engine panel — no data-tab, managed manually via onChange
+                const enginePanel = document.createElement('div');
+                enginePanel.style.paddingTop = '12px';
+                _buildEnginePanel(enginePanel, route, hostType);
+
+                // Extras panel
+                const extrasPanel = document.createElement('div');
+                extrasPanel.style.paddingTop = '12px';
+                extrasPanel.style.display = 'none';
+                extrasPanel.innerHTML = _extrasHTML(route);
+                _wireToggleCards(extrasPanel);
+
+                // Auth panel
+                const authPanel = document.createElement('div');
+                authPanel.style.paddingTop = '12px';
+                authPanel.style.display = 'none';
+                authPanel.innerHTML = _authHTML(route);
+                _wireToggleCards(authPanel);
+
+                subPanels.appendChild(enginePanel);
+                subPanels.appendChild(extrasPanel);
+                subPanels.appendChild(authPanel);
+
+                const subPanelMap = { engine: enginePanel, extras: extrasPanel, auth: authPanel };
+
+                // Use onChange instead of panels: — avoids tabs.js deep querySelectorAll
+                // colliding with the route-level tab's own [data-tab] sweep.
+                tabs.render(subTabNav, [
+                    { key: 'engine', label: 'Engine' },
+                    { key: 'extras', label: 'Extras' },
+                    { key: 'auth',   label: 'Auth' },
+                ], {
+                    active:   'engine',
+                    variant:  'pill',
+                    onChange: (key) => {
+                        Object.entries(subPanelMap).forEach(([k, p]) => {
+                            p.style.display = k === key ? '' : 'none';
+                        });
+                    },
+                });
+
+                // Sync all field changes in this panel back to route data
+                el.addEventListener('change', () => {
+                    _collectRouteData(el, route);
+                    syncField();
+                });
+                el.addEventListener('input', () => {
+                    _collectRouteData(el, route);
+                    syncField();
+                });
+
+                panelsEl.appendChild(el);
+            }
+
+            function buildTabDefs() {
+                return routes.map(r => ({
+                    key:   r.id,
+                    label: r.path || '/',
+                }));
+            }
+
+            function rebuildTabs() {
+                routeTabHandle = tabs.render(tabNavEl, buildTabDefs(), {
+                    panels:   panelsEl,
+                    active:   activeRouteId,
+                    variant:  'line',
+                    onChange: key => { activeRouteId = key; },
+                });
+            }
+
+            // Initial render
+            routes.forEach(r => renderRoutePanel(r));
+            rebuildTabs();
+            syncField();
+
+            addRouteBtn.addEventListener('click', () => {
+                const nr = _newRoute('/new');
+                routes.push(nr);
+                activeRouteId = nr.id;
+                renderRoutePanel(nr);
+                rebuildTabs();
+                syncField();
+            });
+        }
+
+        function _collectRouteData(el, route) {
+            // Collect all data-wz-route-field values from a route panel
+            el.querySelectorAll('[data-wz-route-field]').forEach(input => {
+                const key = input.dataset.wzRouteField;
+                if (!key) return;
+                const [section, field] = key.split('.');
+                if (!route[section]) route[section] = {};
+                if (input.type === 'checkbox') route[section][field] = input.checked;
+                else if (input.type === 'radio') { if (input.checked) route[section][field] = input.value; }
+                else route[section][field] = input.value;
+            });
+        }
+
+        // ── Engine panel builders ────────────────────────────────────────────
+        function _buildEnginePanel(el, route, hostType) {
+            if (hostType === 'web') {
+                el.innerHTML = _webEngineHTML(route);
+                _wireWebEngine(el, route);
+            } else if (hostType === 'proxy') {
+                el.innerHTML = _proxyEngineHTML(route);
+                _wireProxyEngine(el, route);
+            } else if (hostType === 'serverless') {
+                el.innerHTML = _serverlessEngineHTML();
+                _wireServerlessEngine(el, route);
+            }
+        }
+
+        // ── Web engine ────────────────────────────────────────────────────────
+        function _webEngineHTML(route) {
+            const ed = route.engineData || {};
+            return `
+            <div class="wz-toggle-grid">
+
+                <div class="wz-toggle-card">
+                    <div class="wz-toggle-header" data-action="wz-toggle" data-target="wztStatic_${route.id}">
+                        <div><strong>Static Files</strong><span class="wz-toggle-sub">Serve a directory from disk</span></div>
+                        <label class="wz-switch" onclick="event.stopPropagation()"><input type="checkbox" data-wz-route-field="engineData.web_static_on"${ed.web_static_on?' checked':''}><span class="wz-slider"></span></label>
+                    </div>
+                    <div class="wz-toggle-body" id="wztStatic_${route.id}" style="display:none;">
+                        <div class="wz-path-row">
+                            <input type="text" data-wz-route-field="engineData.web_root" class="wz-input"
+                                   placeholder="/var/www/html" value="${ed.web_root||''}">
+                            <button type="button" class="btn small wz-pick-folder" title="Browse">📁</button>
+                        </div>
+                        <div class="wz-inline-checks" style="margin-top:8px;">
+                            <label class="wz-check"><input type="checkbox" data-wz-route-field="engineData.web_listing"${ed.web_listing?' checked':''}> Directory listing</label>
+                            <label class="wz-check"><input type="checkbox" data-wz-route-field="engineData.web_spa"${ed.web_spa?' checked':''}> SPA mode (fallback to index.html)</label>
+                            <label class="wz-check"><input type="checkbox" data-wz-route-field="engineData.web_nocache"${ed.web_nocache?' checked':''}> Disable caching headers</label>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="wz-toggle-card">
+                    <div class="wz-toggle-header" data-action="wz-toggle" data-target="wztPHP_${route.id}">
+                        <div><strong>PHP</strong><span class="wz-toggle-sub">via PHP-FPM FastCGI</span></div>
+                        <label class="wz-switch" onclick="event.stopPropagation()"><input type="checkbox" data-wz-route-field="engineData.php_enabled"${ed.php_enabled?' checked':''}><span class="wz-slider"></span></label>
+                    </div>
+                    <div class="wz-toggle-body" id="wztPHP_${route.id}" style="display:none;">
+                        <input type="text" data-wz-route-field="engineData.php_address" class="wz-input"
+                               placeholder="127.0.0.1:9000 or unix:/run/php/php8.sock" value="${ed.php_address||''}">
+                        <div class="wz-hint">Leave blank for default (127.0.0.1:9000)</div>
+                    </div>
+                </div>
+
+                <div class="wz-toggle-card">
+                    <div class="wz-toggle-header" data-action="wz-toggle" data-target="wztGit_${route.id}">
+                        <div><strong>Git Deploy</strong><span class="wz-toggle-sub">Pull + optional webhook trigger</span></div>
+                        <label class="wz-switch" onclick="event.stopPropagation()"><input type="checkbox" data-wz-route-field="engineData.git_enabled"${ed.git_enabled?' checked':''}><span class="wz-slider"></span></label>
+                    </div>
+                    <div class="wz-toggle-body" id="wztGit_${route.id}" style="display:none;">
+                        <input type="text" data-wz-route-field="engineData.git_url" class="wz-input"
+                               placeholder="https://github.com/org/repo.git" value="${ed.git_url||''}" style="margin-bottom:6px;">
+                        <div style="display:flex;gap:8px;margin-bottom:6px;">
+                            <input type="text" data-wz-route-field="engineData.git_branch" class="wz-input"
+                                   placeholder="Branch (default: main)" value="${ed.git_branch||''}" style="flex:1;">
+                            <input type="text" data-wz-route-field="engineData.git_id" class="wz-input"
+                                   placeholder="Deploy ID (e.g. my-site)" value="${ed.git_id||''}" style="flex:1;">
+                        </div>
+                        <div class="wz-hint" style="margin-bottom:10px;">
+                            Webhook: <code style="font-size:10px;">https://{domain}/.well-known/agbero/webhook/git/{id}</code>
+                        </div>
+                        <div style="display:flex;gap:8px;margin-bottom:6px;">
+                            <div style="flex:1;">
+                                <label class="wz-label" style="font-size:11px;">Poll interval (Pull mode)</label>
+                                <input type="text" data-wz-route-field="engineData.git_interval" class="wz-input"
+                                       placeholder="e.g. 5m — blank = webhook only" value="${ed.git_interval||''}">
+                            </div>
+                            <div style="flex:1;">
+                                <label class="wz-label" style="font-size:11px;">Webhook secret (Push mode)</label>
+                                <input type="text" data-wz-route-field="engineData.git_secret" class="wz-input"
+                                       placeholder="Must match GitHub/GitLab setting" value="${ed.git_secret||''}">
+                            </div>
+                        </div>
+                        <label class="wz-label" style="font-size:11px;margin-top:4px;">Auth (private repos)</label>
+                        <select data-wz-route-field="engineData.git_auth_type" class="wz-select-inline" style="margin-bottom:6px;">
+                            <option value="">None (public)</option>
+                            <option value="basic"${ed.git_auth_type==='basic'?' selected':''}>Basic (username / password)</option>
+                            <option value="ssh-key"${ed.git_auth_type==='ssh-key'?' selected':''}>SSH Key</option>
+                            <option value="ssh-agent"${ed.git_auth_type==='ssh-agent'?' selected':''}>SSH Agent</option>
+                        </select>
+                        <div class="wz-git-auth-fields"></div>
+                    </div>
+                </div>
+
+                <div class="wz-toggle-card">
+                    <div class="wz-toggle-header" data-action="wz-toggle" data-target="wztMd_${route.id}">
+                        <div><strong>Markdown</strong><span class="wz-toggle-sub">Render .md files as HTML</span></div>
+                        <label class="wz-switch" onclick="event.stopPropagation()"><input type="checkbox" data-wz-route-field="engineData.markdown_enabled"${ed.markdown_enabled?' checked':''}><span class="wz-slider"></span></label>
+                    </div>
+                    <div class="wz-toggle-body" id="wztMd_${route.id}" style="display:none;">
+                        <div class="wz-hint">Markdown files served as styled HTML. Syntax highlighting included.</div>
+                    </div>
+                </div>
+
+            </div>`;
+        }
+
+        function _wireWebEngine(el, route) {
+            _wireToggleCards(el);
+
+            // Folder picker buttons
+            el.querySelectorAll('.wz-pick-folder').forEach(btn => {
+                btn.addEventListener('click', async () => {
+                    const inp = btn.previousElementSibling;
+                    if (!inp) return;
+                    if (window.showDirectoryPicker) {
+                        try {
+                            const dh = await window.showDirectoryPicker();
+                            inp.value = dh.name;
+                            inp.dispatchEvent(new Event('input'));
+                        } catch(e) {}
+                    } else {
+                        inp.focus();
+                        notify.show('Directory picker not supported in this browser — type the path manually', 'info');
+                    }
+                });
+            });
+
+            // Git auth select → show/hide credential fields
+            const authSel = el.querySelector('[data-wz-route-field="engineData.git_auth_type"]');
+            const authBox = el.querySelector('.wz-git-auth-fields');
+            function updateGitAuth() {
+                if (!authBox) return;
+                const v = authSel?.value || '';
+                authBox.innerHTML = v === 'basic' ? `
+                    <input type="text" data-wz-route-field="engineData.git_auth_user" class="wz-input" placeholder="Username" style="margin-bottom:4px;" value="${route.engineData?.git_auth_user||''}">
+                    <input type="password" data-wz-route-field="engineData.git_auth_pass" class="wz-input" placeholder="Password / token" value="${route.engineData?.git_auth_pass||''}">
+                ` : v === 'ssh-key' ? `
+                    <textarea data-wz-route-field="engineData.git_ssh_key" class="wz-input" rows="3"
+                        placeholder="-----BEGIN OPENSSH PRIVATE KEY-----"
+                        style="font-family:var(--font-mono);font-size:11px;resize:vertical;">${route.engineData?.git_ssh_key||''}</textarea>
+                ` : '';
+            }
+            authSel?.addEventListener('change', updateGitAuth);
+            updateGitAuth();
+        }
+
+        // ── Proxy engine ──────────────────────────────────────────────────────
+        function _proxyEngineHTML(route) {
+            const ed = route.engineData || {};
+            const strategy = ed.lb_strategy || 'round_robin';
+            return `
+            <div class="wz-section-heading">Backends</div>
+            <div class="wz-hint" style="margin-bottom:8px;">Add one or more upstream servers. Agbero load-balances across all active backends.</div>
+            <div id="wzProxyBackends_${route.id}" class="wz-backend-list"></div>
+            <button type="button" class="btn small wz-add-backend" style="margin-top:8px;">+ Add Backend</button>
+            <input type="hidden" data-wz-route-field="engineData.backends_list" class="wz-backends-field" value="${ed.backends_list||'[]'}">
+
+            <div class="wz-section-heading" style="margin-top:20px;">Load Balancing Strategy</div>
+            <div class="wz-strategy-grid">
+                <label class="wz-strategy-opt"><input type="radio" name="lb_strategy_${route.id}" data-wz-route-field="engineData.lb_strategy" value="round_robin"${strategy==='round_robin'?' checked':''}><span><strong>Round Robin</strong><em>Balanced, default</em></span></label>
+                <label class="wz-strategy-opt"><input type="radio" name="lb_strategy_${route.id}" data-wz-route-field="engineData.lb_strategy" value="least_conn"${strategy==='least_conn'?' checked':''}><span><strong>Least Connections</strong><em>Lowest active load</em></span></label>
+                <label class="wz-strategy-opt"><input type="radio" name="lb_strategy_${route.id}" data-wz-route-field="engineData.lb_strategy" value="least_response_time"${strategy==='least_response_time'?' checked':''}><span><strong>Least Response Time</strong><em>Fastest backend</em></span></label>
+                <label class="wz-strategy-opt"><input type="radio" name="lb_strategy_${route.id}" data-wz-route-field="engineData.lb_strategy" value="sticky"${strategy==='sticky'?' checked':''}><span><strong>Sticky Sessions</strong><em>Same client → same server</em></span></label>
+                <label class="wz-strategy-opt"><input type="radio" name="lb_strategy_${route.id}" data-wz-route-field="engineData.lb_strategy" value="ip_hash"${strategy==='ip_hash'?' checked':''}><span><strong>IP Hash</strong><em>Consistent by client IP</em></span></label>
+                <label class="wz-strategy-opt"><input type="radio" name="lb_strategy_${route.id}" data-wz-route-field="engineData.lb_strategy" value="adaptive"${strategy==='adaptive'?' checked':''}><span><strong>Adaptive</strong><em>Auto-tune by health score</em></span></label>
+            </div>`;
+        }
+
+        function _wireProxyEngine(el, route) {
+            let backends = [];
+            try { backends = JSON.parse(route.engineData?.backends_list || '[]'); } catch { backends = []; }
+            if (!backends.length) backends = [{ address: '', weight: 1 }];
+
+            const listEl  = el.querySelector('#wzProxyBackends_' + route.id);
+            const fieldEl = el.querySelector('.wz-backends-field');
+            const addBtn  = el.querySelector('.wz-add-backend');
+
+            function syncField() {
+                if (fieldEl) {
+                    fieldEl.value = JSON.stringify(backends);
+                    route.engineData = route.engineData || {};
+                    route.engineData.backends_list = fieldEl.value;
+                }
+            }
+
+            function render() {
+                if (!listEl) return;
+                listEl.innerHTML = backends.map((b, i) => `
+                    <div class="wz-backend-row" data-idx="${i}">
+                        <input type="text" class="wz-input wz-be-addr" value="${b.address||''}"
+                               placeholder="http://10.0.0.5:8080 or unix:/run/app.sock" style="flex:1;">
+                        <input type="number" class="wz-input-sm wz-be-weight" value="${b.weight||1}"
+                               min="1" max="100" title="Weight" style="width:60px;">
+                        <span class="wz-hint-inline" style="font-size:10px;white-space:nowrap;">weight</span>
+                        <button type="button" class="btn small wz-be-remove"
+                            style="color:var(--danger);border-color:var(--danger);padding:4px 8px;" title="Remove">✕</button>
+                    </div>`).join('');
+
+                listEl.querySelectorAll('.wz-be-addr').forEach((inp, i) => {
+                    inp.addEventListener('input', () => { backends[i].address = inp.value; syncField(); });
+                });
+                listEl.querySelectorAll('.wz-be-weight').forEach((inp, i) => {
+                    inp.addEventListener('input', () => { backends[i].weight = Number(inp.value) || 1; syncField(); });
+                });
+                listEl.querySelectorAll('.wz-be-remove').forEach(btn => {
+                    btn.addEventListener('click', () => {
+                        backends.splice(+btn.closest('[data-idx]').dataset.idx, 1);
+                        render();
+                    });
+                });
+            }
+
+            addBtn?.addEventListener('click', () => {
+                backends.push({ address: '', weight: 1 });
+                render();
+                const rows = listEl?.querySelectorAll('.wz-be-addr');
+                if (rows?.length) rows[rows.length - 1].focus();
+            });
+
+            render();
+            syncField();
+        }
+
+        // ── Serverless engine ─────────────────────────────────────────────────
+        function _serverlessEngineHTML() {
+            return `
+            <div id="wzSlTabNav"></div>
+            <div id="wzSlPanelRests" style="padding-top:10px;">
+                <div class="wz-hint" style="margin-bottom:10px;">Each REST proxy forwards requests to an external API and injects credentials server-side. Reached at <code>/{name}</code>.</div>
+                <div id="wzRestList" class="wz-backend-list"></div>
+                <button type="button" class="btn small" id="wzAddRestBtn" style="margin-top:8px;">+ Add REST Proxy</button>
+                <input type="hidden" class="wz-rest-field" value="[]">
+            </div>
+            <div id="wzSlPanelWorkers" style="padding-top:10px;display:none;">
+                <div class="wz-hint" style="margin-bottom:10px;">Workers are managed OS processes — on-demand HTTP triggers, scheduled cron, background daemons, or one-shot startup tasks.</div>
+                <div id="wzWorkerList" class="wz-backend-list"></div>
+                <button type="button" class="btn small" id="wzAddWorkerBtn" style="margin-top:8px;">+ Add Worker</button>
+                <input type="hidden" class="wz-worker-field" value="[]">
+            </div>`;
+        }
+
+        function _wireServerlessEngine(el, route) {
+            const restsPanel   = el.querySelector('#wzSlPanelRests');
+            const workersPanel = el.querySelector('#wzSlPanelWorkers');
+
+            tabs.render(el.querySelector('#wzSlTabNav'), [
+                { key: 'rests',   label: 'REST Proxies' },
+                { key: 'workers', label: 'Workers' },
+            ], {
+                active:   'rests',
+                variant:  'pill',
+                onChange: (key) => {
+                    if (restsPanel)   restsPanel.style.display   = key === 'rests'   ? '' : 'none';
+                    if (workersPanel) workersPanel.style.display = key === 'workers' ? '' : 'none';
+                },
+            });
+
+            let rests   = [];
+            let workers = [];
+            const restField   = el.querySelector('.wz-rest-field');
+            const workerField = el.querySelector('.wz-worker-field');
+
+            function syncRests()   { if (restField)   { restField.value   = JSON.stringify(rests);   route.engineData = route.engineData || {}; route.engineData.serverless_rests   = restField.value; } }
+            function syncWorkers() { if (workerField)  { workerField.value = JSON.stringify(workers);  route.engineData = route.engineData || {}; route.engineData.serverless_workers = workerField.value; } }
+
+            function renderRests() {
+                const listEl = el.querySelector('#wzRestList');
+                if (!listEl) return;
+                listEl.innerHTML = rests.map((r, i) => `
+                    <div class="wz-backend-row" style="flex-direction:column;gap:6px;padding:10px;border:1px solid var(--border);border-radius:6px;margin-bottom:8px;" data-idx="${i}">
+                        <div style="display:flex;gap:6px;">
+                            <input type="text" class="wz-input wz-rest-name" placeholder="Name (e.g. stripe)" value="${r.name||''}" style="flex:1;">
+                            <select class="wz-select-inline wz-rest-method">
+                                ${['GET','POST','PUT','DELETE','PATCH'].map(m => `<option${r.method===m?' selected':''}>${m}</option>`).join('')}
+                            </select>
+                            <button type="button" class="btn small wz-rest-remove" style="color:var(--danger);border-color:var(--danger);">✕</button>
+                        </div>
+                        <input type="text" class="wz-input wz-rest-url" placeholder="https://api.example.com/endpoint" value="${r.url||''}">
+                        <input type="text" class="wz-input wz-rest-auth" placeholder='Authorization header value — e.g. Bearer env.MY_API_KEY' value="${r.auth_header||''}">
+                        <div class="wz-hint">Use <code>env.VAR_NAME</code> to inject server environment variables — the value is resolved at runtime, never exposed to the browser.</div>
+                        <input type="text" class="wz-input-sm wz-rest-timeout" placeholder="Timeout (default 30s)" value="${r.timeout||''}" style="width:140px;">
+                    </div>`).join('') || '<div class="wz-hint" style="padding:8px;">No REST proxies yet.</div>';
+
+                listEl.querySelectorAll('[data-idx]').forEach(row => {
+                    const i = +row.dataset.idx;
+                    row.querySelector('.wz-rest-name')?.addEventListener('input', e => { rests[i].name = e.target.value; syncRests(); });
+                    row.querySelector('.wz-rest-url')?.addEventListener('input', e => { rests[i].url = e.target.value; syncRests(); });
+                    row.querySelector('.wz-rest-auth')?.addEventListener('input', e => { rests[i].auth_header = e.target.value; syncRests(); });
+                    row.querySelector('.wz-rest-timeout')?.addEventListener('input', e => { rests[i].timeout = e.target.value; syncRests(); });
+                    row.querySelector('.wz-rest-method')?.addEventListener('change', e => { rests[i].method = e.target.value; syncRests(); });
+                    row.querySelector('.wz-rest-remove')?.addEventListener('click', () => { rests.splice(i, 1); renderRests(); });
+                });
+            }
+
+            function renderWorkers() {
+                const listEl = el.querySelector('#wzWorkerList');
+                if (!listEl) return;
+                listEl.innerHTML = workers.map((wk, i) => `
+                    <div class="wz-backend-row" style="flex-direction:column;gap:6px;padding:10px;border:1px solid var(--border);border-radius:6px;margin-bottom:8px;" data-idx="${i}">
+                        <div style="display:flex;gap:6px;">
+                            <input type="text" class="wz-input wz-wk-name" placeholder="Name (e.g. pdf)" value="${wk.name||''}" style="flex:1;">
+                            <button type="button" class="btn small wz-wk-remove" style="color:var(--danger);border-color:var(--danger);">✕</button>
+                        </div>
+                        <input type="text" class="wz-input wz-wk-command" placeholder="Command — e.g. node scripts/pdf.js or python3 worker.py" value="${wk.command||''}">
+                        <div class="wz-hint">Space-separated. Agbero manages the process lifecycle.</div>
+                        <div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:4px;">
+                            <label class="wz-check"><input type="checkbox" class="wz-wk-bg"${wk.background?' checked':''}> Background daemon</label>
+                            <label class="wz-check"><input type="checkbox" class="wz-wk-once"${wk.run_once?' checked':''}> Run once at startup</label>
+                        </div>
+                        <div style="display:flex;gap:8px;margin-top:4px;">
+                            <div style="flex:1;">
+                                <label class="wz-label" style="font-size:11px;">Schedule (cron, optional)</label>
+                                <input type="text" class="wz-input wz-wk-schedule" placeholder="0 2 * * *" value="${wk.schedule||''}">
+                            </div>
+                            <div style="flex:1;">
+                                <label class="wz-label" style="font-size:11px;">Timeout</label>
+                                <input type="text" class="wz-input wz-wk-timeout" placeholder="30s" value="${wk.timeout||''}">
+                            </div>
+                        </div>
+                    </div>`).join('') || '<div class="wz-hint" style="padding:8px;">No workers yet.</div>';
+
+                listEl.querySelectorAll('[data-idx]').forEach(row => {
+                    const i = +row.dataset.idx;
+                    row.querySelector('.wz-wk-name')?.addEventListener('input', e => { workers[i].name = e.target.value; syncWorkers(); });
+                    row.querySelector('.wz-wk-command')?.addEventListener('input', e => { workers[i].command = e.target.value; syncWorkers(); });
+                    row.querySelector('.wz-wk-schedule')?.addEventListener('input', e => { workers[i].schedule = e.target.value; syncWorkers(); });
+                    row.querySelector('.wz-wk-timeout')?.addEventListener('input', e => { workers[i].timeout = e.target.value; syncWorkers(); });
+                    row.querySelector('.wz-wk-bg')?.addEventListener('change', e => { workers[i].background = e.target.checked; syncWorkers(); });
+                    row.querySelector('.wz-wk-once')?.addEventListener('change', e => { workers[i].run_once = e.target.checked; syncWorkers(); });
+                    row.querySelector('.wz-wk-remove')?.addEventListener('click', () => { workers.splice(i, 1); renderWorkers(); });
+                });
+            }
+
+            el.querySelector('#wzAddRestBtn')?.addEventListener('click', () => {
+                rests.push({ name: '', method: 'GET', url: '', auth_header: '', timeout: '' });
+                renderRests();
+            });
+            el.querySelector('#wzAddWorkerBtn')?.addEventListener('click', () => {
+                workers.push({ name: '', command: '', background: false, run_once: false, schedule: '', timeout: '' });
+                renderWorkers();
+            });
+
+            renderRests();
+            renderWorkers();
+        }
+
+        // ── Extras panel ──────────────────────────────────────────────────────
+        function _extrasHTML(route) {
+            const ex = route.extras || {};
+            return `
+            <div class="wz-toggle-grid">
+                <div class="wz-toggle-card">
+                    <div class="wz-toggle-header" data-action="wz-toggle" data-target="wztCache_${route.id}">
+                        <div><strong>Cache</strong><span class="wz-toggle-sub">Memory or Redis response cache</span></div>
+                        <label class="wz-switch" onclick="event.stopPropagation()"><input type="checkbox" data-wz-route-field="extras.cache_enabled"${ex.cache_enabled?' checked':''}><span class="wz-slider"></span></label>
+                    </div>
+                    <div class="wz-toggle-body" id="wztCache_${route.id}" style="display:none;">
+                        <div class="wz-inline-row">
+                            <select data-wz-route-field="extras.cache_driver" class="wz-select-inline">
+                                <option value="memory"${ex.cache_driver!=='redis'?' selected':''}>Memory</option>
+                                <option value="redis"${ex.cache_driver==='redis'?' selected':''}>Redis</option>
+                            </select>
+                            <input type="text" data-wz-route-field="extras.cache_ttl" class="wz-input-sm" placeholder="TTL e.g. 5m" value="${ex.cache_ttl||''}">
+                        </div>
+                    </div>
+                </div>
+                <div class="wz-toggle-card">
+                    <div class="wz-toggle-header" data-action="wz-toggle" data-target="wztCORS_${route.id}">
+                        <div><strong>CORS</strong><span class="wz-toggle-sub">Cross-origin resource sharing</span></div>
+                        <label class="wz-switch" onclick="event.stopPropagation()"><input type="checkbox" data-wz-route-field="extras.cors_enabled"${ex.cors_enabled?' checked':''}><span class="wz-slider"></span></label>
+                    </div>
+                    <div class="wz-toggle-body" id="wztCORS_${route.id}" style="display:none;">
+                        <textarea data-wz-route-field="extras.cors_origins" class="wz-input" rows="2"
+                                  placeholder="One origin per line, or * for all" style="resize:vertical;">${ex.cors_origins||''}</textarea>
+                    </div>
+                </div>
+                <div class="wz-toggle-card">
+                    <div class="wz-toggle-header" data-action="wz-toggle" data-target="wztRate_${route.id}">
+                        <div><strong>Rate Limit</strong><span class="wz-toggle-sub">Throttle requests by IP</span></div>
+                        <label class="wz-switch" onclick="event.stopPropagation()"><input type="checkbox" data-wz-route-field="extras.rate_enabled"${ex.rate_enabled?' checked':''}><span class="wz-slider"></span></label>
+                    </div>
+                    <div class="wz-toggle-body" id="wztRate_${route.id}" style="display:none;">
+                        <div class="wz-inline-row">
+                            <input type="number" data-wz-route-field="extras.rate_requests" class="wz-input-sm" placeholder="Requests" value="${ex.rate_requests||100}">
+                            <span class="wz-hint-inline">per</span>
+                            <input type="text" data-wz-route-field="extras.rate_window" class="wz-input-sm" placeholder="Window e.g. 1m" value="${ex.rate_window||''}">
+                        </div>
+                    </div>
+                </div>
+                <div class="wz-toggle-card">
+                    <div class="wz-toggle-header">
+                        <div><strong>GZIP</strong><span class="wz-toggle-sub">Compress responses automatically</span></div>
+                        <label class="wz-switch" onclick="event.stopPropagation()"><input type="checkbox" data-wz-route-field="extras.gzip_enabled"${ex.gzip_enabled?' checked':''}><span class="wz-slider"></span></label>
+                    </div>
+                </div>
+                <div class="wz-toggle-card">
+                    <div class="wz-toggle-header">
+                        <div><strong>Firewall</strong><span class="wz-toggle-sub">Enable per-route IP blocking</span></div>
+                        <label class="wz-switch" onclick="event.stopPropagation()"><input type="checkbox" data-wz-route-field="extras.firewall_enabled"${ex.firewall_enabled?' checked':''}><span class="wz-slider"></span></label>
+                    </div>
+                </div>
+            </div>`;
+        }
+
+        // ── Auth panel ─────────────────────────────────────────────────────────
+        function _authHTML(route) {
+            const au = route.authData || {};
+            return `
+            <div class="wz-toggle-grid">
+                <div class="wz-toggle-card">
+                    <div class="wz-toggle-header" data-action="wz-toggle" data-target="wztBasicAuth_${route.id}">
+                        <div><strong>Basic Auth</strong><span class="wz-toggle-sub">Username / bcrypt password</span></div>
+                        <label class="wz-switch" onclick="event.stopPropagation()"><input type="checkbox" data-wz-route-field="authData.basic_enabled"${au.basic_enabled?' checked':''}><span class="wz-slider"></span></label>
+                    </div>
+                    <div class="wz-toggle-body" id="wztBasicAuth_${route.id}" style="display:none;">
+                        <div class="wz-hint" style="margin-bottom:6px;">One entry per line: <code>username:$2y$10$...</code></div>
+                        <textarea data-wz-route-field="authData.basic_users" class="wz-input" rows="3"
+                                  placeholder="admin:$2y$10$hash&#10;deploy:$2y$10$hash"
+                                  style="resize:vertical;font-family:var(--font-mono);font-size:11px;">${au.basic_users||''}</textarea>
+                    </div>
+                </div>
+                <div class="wz-toggle-card">
+                    <div class="wz-toggle-header" data-action="wz-toggle" data-target="wztJWT_${route.id}">
+                        <div><strong>JWT Auth</strong><span class="wz-toggle-sub">Validate Bearer tokens</span></div>
+                        <label class="wz-switch" onclick="event.stopPropagation()"><input type="checkbox" data-wz-route-field="authData.jwt_enabled"${au.jwt_enabled?' checked':''}><span class="wz-slider"></span></label>
+                    </div>
+                    <div class="wz-toggle-body" id="wztJWT_${route.id}" style="display:none;">
+                        <input type="text" data-wz-route-field="authData.jwt_secret" class="wz-input" placeholder="JWT secret" style="margin-bottom:6px;" value="${au.jwt_secret||''}">
+                        <input type="text" data-wz-route-field="authData.jwt_issuer" class="wz-input" placeholder="Issuer (optional)" value="${au.jwt_issuer||''}">
+                    </div>
+                </div>
+                <div class="wz-toggle-card">
+                    <div class="wz-toggle-header" data-action="wz-toggle" data-target="wztForward_${route.id}">
+                        <div><strong>Forward Auth</strong><span class="wz-toggle-sub">Delegate auth to external service</span></div>
+                        <label class="wz-switch" onclick="event.stopPropagation()"><input type="checkbox" data-wz-route-field="authData.forward_enabled"${au.forward_enabled?' checked':''}><span class="wz-slider"></span></label>
+                    </div>
+                    <div class="wz-toggle-body" id="wztForward_${route.id}" style="display:none;">
+                        <input type="text" data-wz-route-field="authData.forward_url" class="wz-input" placeholder="https://auth.example.com/validate" value="${au.forward_url||''}">
+                    </div>
+                </div>
+            </div>`;
+        }
+
+        // ── Step 4: Advanced JSON ─────────────────────────────────────────────
+        function stepAdvancedHTML() {
+            const existing = draft?.raw_json || '';
+            return `
+            <p class="wz-section-hint">Write the complete host config as JSON. It will be validated on save.</p>
+            <button type="button" id="wzFormatJsonBtn" class="btn small" style="margin-bottom:8px;">✨ Format</button>
+            <textarea data-wizard-field="raw_json" id="wzAdvancedJson" class="json-editor" spellcheck="false"
+                      style="min-height:260px;" placeholder='{ "domains": ["..."], "tls": { "mode": "auto" }, "routes": [...] }'>${existing}</textarea>`;
+        }
+
+        // ── Step 5: Review & Edit ─────────────────────────────────────────────
+        function stepConfirmHTML(data) {
+            let previewObj = {};
+            try {
+                if (data.host_type === 'advanced') {
+                    previewObj = JSON.parse(data.raw_json || '{}');
+                } else {
+                    const routesData = JSON.parse(data.routes_data || '[]');
+                    previewObj = buildHostConfig({ ...data, routes: routesData });
+                }
+            } catch(e) {
+                previewObj = { error: 'Could not build config — ' + e.message };
+            }
+            const json = JSON.stringify(previewObj, null, 2);
+            saveDraft({ ...data, _previewJson: json });
+            return `
+            <p class="wz-section-hint">Review and edit your configuration below. What you see here is exactly what gets saved.</p>
+            <textarea id="wzConfirmJson" data-wizard-field="confirm_json" class="json-editor" spellcheck="false"
+                      style="min-height:300px;width:100%;box-sizing:border-box;">${json.replace(/</g,'&lt;').replace(/>/g,'&gt;')}</textarea>`;
+        }
+
+        // ── Step definitions ──────────────────────────────────────────────────
+        const isAdvanced = draftType === 'advanced';
+        const steps = [
+            {
+                key:   'type',
+                label: 'Host type',
+                body:  stepTypeHTML(),
+                validate: (d) => (d.host_type || '') !== '' || 'Please select a host type',
+            },
+            ...(isAdvanced ? [] : [{
+                key:   'domain',
+                label: 'Domain & TLS',
+                body:  (bodyEl) => {
+                    bodyEl.innerHTML = stepDomainHTML();
+                    _wireDomainStep(bodyEl);
+                },
+                validate: (d) => {
+                    const dom = (d.domain || '').trim();
+                    if (!dom) return 'Domain is required';
+                    if (dom.includes('://')) return 'Domain must not include a protocol prefix';
+                    if (dom.includes('..'))  return 'Invalid domain';
+                    return true;
+                },
+            }]),
+            ...(isAdvanced ? [{
+                key:   'advanced',
+                label: 'Config JSON',
+                body:  (bodyEl) => {
+                    bodyEl.innerHTML = stepAdvancedHTML();
+                    bodyEl.querySelector('#wzFormatJsonBtn')?.addEventListener('click', () => {
+                        const ta = bodyEl.querySelector('#wzAdvancedJson');
+                        if (!ta) return;
+                        try { ta.value = JSON.stringify(JSON.parse(ta.value), null, 2); }
+                        catch(e) { notify.show('Invalid JSON: ' + e.message, 'error'); }
+                    });
+                },
+            }] : [{
+                key:   'routes',
+                label: 'Routes',
+                body:  (bodyEl) => {
+                    bodyEl.innerHTML = stepRoutesHTML();
+                    _wireRoutesStep(bodyEl);
+                },
+                validate: (d) => {
+                    try {
+                        const rs = JSON.parse(d.routes_data || '[]');
+                        if (!rs.length) return 'Add at least one route';
+                        for (const r of rs) {
+                            if (!r.path?.startsWith('/')) return `Route path must start with /`;
+                        }
+                    } catch { return 'Invalid route data'; }
+                    return true;
+                },
+            }]),
+            {
+                key:   'confirm',
+                label: 'Review & Create',
+                body:  (bodyEl) => {
+                    bodyEl.innerHTML = stepConfirmHTML(w.data());
+                },
+                final: true,
+            },
+        ];
+
+        // ── Initialize wizard ─────────────────────────────────────────────────
+        const w = wizard.render(mount, steps, {
+            labels:  { submit: 'Create Host', cancel: 'Cancel' },
+            onCancel: () => { clearDraft(); modal.closeAll(); },
+            onStepChange: (from, to, key) => {
+                // Auto-save draft on every step advance
+                saveDraft(w.data());
+                // Advanced type: after type step, rebuild steps dynamically
+                if (from === 0) {
+                    const chosen = w.data().host_type;
+                    if (chosen === 'advanced' && !isAdvanced) {
+                        // Restart wizard with advanced path
+                        clearDraft();
+                        saveDraft({ host_type: 'advanced' });
+                        buildAddHostWizard(mount);
+                        return;
+                    }
+                }
+            },
+            onComplete: async (allData) => {
+                let config;
+                try {
+                    const raw = (allData.confirm_json || '').trim();
+                    config = JSON.parse(raw || '{}');
+                } catch(e) {
+                    throw new Error('Invalid JSON: ' + e.message);
+                }
+                const domain = (allData.domain || config.domains?.[0] || '').trim().toLowerCase();
+                if (!domain) throw new Error('Domain is required');
+                const result = await addHost(domain, config);
+                if (result?.error) throw new Error(result.error);
+                clearDraft();
+                modal.closeAll();
+                notify.show(domain + ' created', 'success');
+                emit('hosts:refresh');
+                emit('config:reload');
+            },
+        });
+
+        return w;
+    }
+
+    // ── Shared toggle-card wiring ─────────────────────────────────────────────
+    function _wireToggleCards(container) {
+        container.querySelectorAll('.wz-toggle-card input[type="checkbox"]').forEach(cb => {
+            const card   = cb.closest('.wz-toggle-card');
+            const header = card?.querySelector('.wz-toggle-header[data-target]');
+            const bodyId = header?.dataset.target;
+            const body   = bodyId ? (container.querySelector('#' + bodyId) ?? query('#' + bodyId)) : null;
+            if (!body) return;
+            const panel = collapse.attach(null, body, { open: cb.checked, animation: true, duration: 180 });
+            cb.addEventListener('change', () => { cb.checked ? panel.open() : panel.close(); });
+        });
+    }
+
+
+    // ── Toggle card header click — uses Oja collapse.toggle ──────────────────
+    on('[data-action="wz-toggle"]', 'click', (e, el) => {
+        const targetId = el.dataset.target;
+        if (!targetId) return;
+        const body = query('#' + targetId);
+        if (body) collapse.toggle(body, { animation: true, duration: 180 });
+    });
+
+    // ── Type card selection ───────────────────────────────────────────────────
+    on('[data-action="wz-type-pick"]', 'click', (e, card) => {
+        const val = card.dataset.value;
+        // Mark selected state
+        queryAll('.wz-type-card').forEach(c => c.classList.toggle('selected', c === card));
+        // Write to hidden field that wizard.js will collect
+        const hidden = query('#wzHostType');
+        if (hidden) hidden.value = val;
+    });
+
+    // ── Advanced JSON format button ──────────────────────────────────────────
+    on('#wzFormatJsonBtn', 'click', () => {
+        const ta = query('#wzAdvancedJson');
+        if (!ta) return;
         try {
-            const result = await addHost(getCreds(), domain, { domains: [domain], tls: { mode: 'auto' }, routes: [routeBlock] });
-            if (result && result.error) throw new Error(result.error);
-            ui.btn.done(btn, 'Saved ✓');
-            setTimeout(() => modal.closeAll(), 800);
-            emit('hosts:refresh');
-            loadConfigData();
-        } catch (err) {
-            ui.btn.reset(btn);
-            errEl.textContent = err.message; errEl.style.display = 'block';
+            ta.value = JSON.stringify(JSON.parse(ta.value), null, 4);
+        } catch(err) {
+            notify.show('Invalid JSON: ' + err.message, 'error');
         }
     });
 
     // JSON Format Button — standard JSON.parse only (CSP blocks eval/new Function)
     on('#formatHostJsonBtn', 'click', () => {
-        const el = document.getElementById('editHostJsonTextarea');
-        const errEl = document.getElementById('editHostError');
+        const el = query('#editHostJsonTextarea');
+        const errEl = query('#editHostError');
         try {
             const parsed = JSON.parse(el.value);
             el.value = JSON.stringify(parsed, null, 4);
@@ -443,100 +1430,126 @@
         }
     });
 
+    // ── Save Host JSON — Bug fix: handler was missing ─────────────────────────
+    // The Edit JSON modal sets dataset.hostname on this button (hosts.html).
+    // POSTing to /api/hosts is idempotent — it handles both create and update.
+    on('#saveHostJsonBtn', 'click', async (e, btn) => {
+        const hostname = btn.dataset.hostname;
+        const errEl    = query('#editHostError');
+        const ta       = query('#editHostJsonTextarea');
+        errEl.style.display = 'none';
+
+        let parsed;
+        try {
+            parsed = JSON.parse(ta.value);
+        } catch(err) {
+            errEl.innerText = 'Invalid JSON: ' + err.message;
+            errEl.style.display = 'block';
+            return;
+        }
+
+        ui.btn.loading(btn, 'Saving…');
+        try {
+            const result = await addHost(hostname, parsed);
+            if (result?.error) throw new Error(result.error);
+            ui.btn.done(btn, 'Saved ✓');
+            setTimeout(() => {
+                modal.closeAll();
+                ui.btn.reset(btn);
+            }, 800);
+            emit('hosts:refresh');
+            emit('config:reload');
+        } catch(err) {
+            ui.btn.reset(btn);
+            errEl.innerText = err.message || 'Save failed';
+            errEl.style.display = 'block';
+        }
+    });
+
     // STRICT DELETE LOGIC
     let _pendingDelete = null;
     listen('app:strict-delete', ({ message, targetText, onConfirm }) => {
-        document.getElementById('strictDeleteText').innerHTML = message;
-        document.getElementById('strictDeleteTarget').innerText = targetText;
-        const input = document.getElementById('strictDeleteInput');
-        const btn = document.getElementById('strictDeleteBtn');
+        query('#strictDeleteText').innerHTML = message;
+        query('#strictDeleteTarget').innerText = targetText;
+        const input = query('#strictDeleteInput');
+        const btn = query('#strictDeleteBtn');
         input.value = ''; btn.disabled = true; _pendingDelete = onConfirm;
         input.oninput = () => { btn.disabled = (input.value !== targetText); };
         modal.open('strictDeleteModal');
     });
     on('#strictDeleteBtn', 'click', () => { if (_pendingDelete) _pendingDelete(); modal.closeAll(); });
 
+    // ── Connection indicator (sys-bar dot + login dot) ────────────────────────
+    // Polls /healthz (no auth required) to measure reachability and latency.
+    // Offline banner is driven by api:offline/api:online events in main.js.
+
     const LATENCY_ONLINE_MS  = 30_000;
-    const LATENCY_OFFLINE_MS = 5_000;
-    let _latencyTimer = null;
+    const LATENCY_OFFLINE_MS =  5_000;
+    let _latencyTimer       = null;
+    let _latencyController  = null;
 
-    function scheduleLatencyCheck(ms) {
-        clearTimeout(_latencyTimer);
-        _latencyTimer = setTimeout(() => { checkLatency(); }, ms);
+    function _connDot(color, label) {
+        store.set('conn.html',
+            `<span class="conn-dot"><span class="conn-dot-circle" style="background:${color}"></span><span>${label}</span></span>`);
     }
 
-    // OFFLINE & LATENCY LOGIC (Fast detection with AbortController)
-    let currentLatencyController = null;
-    async function checkLatency() {
-        const banner = document.getElementById('offlineBanner');
-        if (!navigator.onLine) {
-            store.set('conn.html', `<span class="conn-dot"><span class="conn-dot-circle" style="background:var(--danger)"></span><span>offline</span></span>`);
-            updateLoginDot('var(--danger)', 'offline');
-            if (banner) { banner.style.display = 'block'; banner.classList.add('active'); }
-            scheduleLatencyCheck(LATENCY_OFFLINE_MS);
-            return;
-        }
-
-        if (currentLatencyController) currentLatencyController.abort();
-        currentLatencyController = new AbortController();
-        const start = Date.now();
-        try {
-            const baseUrl = getHost() || window.location.origin;
-            const headers = new Headers();
-            if (getCreds()?.token) headers.set('Authorization', `Bearer ${getCreds().token}`);
-
-            const timeoutId = setTimeout(() => currentLatencyController.abort(), 5000);
-            const res = await fetch(baseUrl + '/uptime', { method: 'HEAD', headers, cache: 'no-store', signal: currentLatencyController.signal });
-            clearTimeout(timeoutId);
-
-            if (res.ok || res.status === 401) {
-                if (banner) { banner.style.display = 'none'; banner.classList.remove('active'); }
-            }
-            if (res.status === 401) {
-                store.set('conn.html', `<span class="conn-dot"><span class="conn-dot-circle" style="background:var(--danger)"></span><span>auth</span></span>`);
-                updateLoginDot('var(--warning)', 'reachable');
-                scheduleLatencyCheck(LATENCY_ONLINE_MS);
-                return;
-            }
-            if (!res.ok) throw new Error('non-ok');
-
-            const ms = Date.now() - start;
-            const color = ms < 100 ? 'var(--success)' : ms < 300 ? 'var(--info)' : ms < 1000 ? 'var(--warning)' : 'var(--danger)';
-            store.set('conn.html', `<span class="conn-dot"><span class="conn-dot-circle" style="background:${color}"></span><span>${ms}ms</span></span>`);
-            updateLoginDot('var(--success)', `${ms}ms`);
-            scheduleLatencyCheck(LATENCY_ONLINE_MS);
-        } catch (e) {
-            if (e.name !== 'AbortError') {
-                store.set('conn.html', `<span class="conn-dot"><span class="conn-dot-circle" style="background:var(--danger)"></span><span>offline</span></span>`);
-                updateLoginDot('var(--danger)', 'offline');
-                if (banner) { banner.style.display = 'block'; banner.classList.add('active'); }
-                scheduleLatencyCheck(LATENCY_OFFLINE_MS);
-            } else {
-                scheduleLatencyCheck(LATENCY_ONLINE_MS);
-            }
-        }
-    }
-
-    window.addEventListener('offline', () => {
-        document.getElementById('offlineBanner').style.display = 'block';
-        store.set('conn.html', `<span class="conn-dot"><span class="conn-dot-circle" style="background:var(--danger)"></span><span>offline</span></span>`);
-        scheduleLatencyCheck(LATENCY_OFFLINE_MS);
-    });
-    window.addEventListener('online', checkLatency);
-
-    function updateLoginDot(color, label) {
-        const circle = document.getElementById('loginServerDotCircle');
-        const lbl    = document.getElementById('loginServerDotLabel');
+    function _loginDot(color, label) {
+        const circle = query('#loginServerDotCircle');
+        const lbl    = query('#loginServerDotLabel');
         if (circle) circle.style.background = color;
         if (lbl)    lbl.textContent = label;
     }
 
-    function startLatencyChecks() {
-        if (window._latencyStarted) return;
-        window._latencyStarted = true;
-        checkLatency();
+    function _scheduleLatency(ms) {
+        clearTimeout(_latencyTimer);
+        _latencyTimer = setTimeout(checkLatency, ms);
     }
-    startLatencyChecks();
+
+    async function checkLatency() {
+        if (!navigator.onLine) {
+            _connDot('var(--danger)', 'offline');
+            _loginDot('var(--danger)', 'offline');
+            _scheduleLatency(LATENCY_OFFLINE_MS);
+            return;
+        }
+
+        if (_latencyController) _latencyController.abort();
+        _latencyController = new AbortController();
+        const start = Date.now();
+
+        try {
+            const base    = getHost() || window.location.origin;
+            const timeout = setTimeout(() => _latencyController.abort(), 5000);
+            // /healthz needs no auth — use it to check reachability before and after login
+            const res = await fetch(base + '/healthz', {
+                method: 'GET', cache: 'no-store',
+                signal: _latencyController.signal,
+            });
+            clearTimeout(timeout);
+
+            // /healthz always returns 200 when server is up — no 401 expected
+            if (!res.ok) throw new Error('non-ok');
+
+            const ms    = Date.now() - start;
+            const color = ms < 100 ? 'var(--success)' : ms < 300 ? 'var(--info)' : ms < 1000 ? 'var(--warning)' : 'var(--danger)';
+            _connDot(color, ms + 'ms');
+            _loginDot('var(--success)', ms + 'ms');
+            _scheduleLatency(LATENCY_ONLINE_MS);
+        } catch (e) {
+            if (e.name !== 'AbortError') {
+                _connDot('var(--danger)', 'offline');
+                _loginDot('var(--danger)', 'offline');
+                _scheduleLatency(LATENCY_OFFLINE_MS);
+            } else {
+                _scheduleLatency(LATENCY_ONLINE_MS);
+            }
+        }
+    }
+
+    window.addEventListener('offline', () => { _connDot('var(--danger)', 'offline'); _scheduleLatency(LATENCY_OFFLINE_MS); });
+    window.addEventListener('online',  checkLatency);
+
+    if (!window._latencyStarted) { window._latencyStarted = true; checkLatency(); }
 
     // THE PERFORMANCE MODAL IMPLEMENTATION
     function _initPerfCharts() {
@@ -551,13 +1564,13 @@
     async function loadPerfData(hostname, range) {
         if (!_perfCharts) _initPerfCharts();
         const skel = '<div class="perf-skeleton"></div>';['perfChartReqs','perfChartP99','perfChartErrors','perfChartBE'].forEach(id => {
-            const el = document.getElementById(id);
+            const el = query('#' + id);
             if (el) el.innerHTML = skel;
         });
 
-        const data = await fetchTelemetry(getCreds(), hostname, range);
+        const data = await fetchTelemetry(hostname, range);
         if (!data?.samples?.length) {['perfChartReqs','perfChartP99','perfChartErrors','perfChartBE'].forEach(id => {
-            const el = document.getElementById(id);
+            const el = query('#' + id);
             if (el) el.innerHTML = '<div style="height:100%;display:flex;align-items:center;justify-content:center;color:var(--text-mute);font-size:11px;">No history data yet</div>';
         });
             return;
@@ -570,7 +1583,7 @@
 
         if (s.length >= 2) {
             const fmt = ts => new Date(ts * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-            document.getElementById('perfDataRange').textContent = `${fmt(s[0].ts)} – ${fmt(s[s.length - 1].ts)} · ${s.length} points`;
+            query('#perfDataRange').textContent = `${fmt(s[0].ts)} – ${fmt(s[s.length - 1].ts)} · ${s.length} points`;
         }
     }
 
@@ -591,31 +1604,55 @@
         store.set('certs.expiring', certs.filter(c => c.daysLeft > 0 && c.daysLeft < 7).length);
     });
 
-    // RESTORED SESSION EXPIRY
+    // ── Session expiry warning — Oja notify replaces the rAF countdown loop ──
+    // auth.js emits auth:expiring ~5 min before expiry with { ms, expiresAt }.
+    // We show a dismissible warn toast with a live countdown updated by interval.
+    let _expiryToastId  = null;
+    let _expiryInterval = null;
+
     listen('auth:expiring', ({ expiresAt }) => {
-        const warningEl = document.getElementById('sessionWarning');
-        const timeEl = document.getElementById('sessionExpiryTime');
-        if (warningEl) warningEl.classList.add('active');
+        if (_expiryInterval) clearInterval(_expiryInterval);
+        if (_expiryToastId)  notify.dismiss(_expiryToastId);
 
-        const tick = () => {
+        function _left() {
+            const ms = expiresAt - Date.now();
+            if (ms <= 0) return '0s';
+            const m = Math.floor(ms / 60000);
+            const s = Math.floor((ms % 60000) / 1000);
+            return m > 0 ? `${m}m ${s}s` : `${s}s`;
+        }
+
+        _expiryToastId = notify.warn(`🔐 Session expires in ${_left()}`, {
+            duration:    0,
+            dismissible: true,
+            action: { label: '↺ Renew', fn: () => { clearCredentials(); auth.session.end(); store.set('auth.isLoggedIn', false); window.location.reload(); } },
+        });
+
+        // Update the toast text every second using the toast id
+        _expiryInterval = setInterval(() => {
             const left = expiresAt - Date.now();
-            if (left <= 0) { warningEl?.classList.remove('active'); return; }
-            if (timeEl) timeEl.innerText = `${Math.floor(left / 60000)}m ${Math.floor((left % 60000) / 1000)}s`;
-            requestAnimationFrame(tick);
-        };
-        requestAnimationFrame(tick);
+            if (left <= 0) {
+                clearInterval(_expiryInterval);
+                notify.dismiss(_expiryToastId);
+                return;
+            }
+            // Re-issue toast with updated countdown — dismiss old one first
+            notify.dismiss(_expiryToastId);
+            _expiryToastId = notify.warn(`🔐 Session expires in ${_left()}`, {
+                duration:    0,
+                dismissible: true,
+                action: { label: '↺ Renew', fn: () => { clearCredentials(); auth.session.end(); store.set('auth.isLoggedIn', false); window.location.reload(); } },
+            });
+        }, 10_000); // update every 10s — enough resolution, avoids toast flicker
     });
 
-    on('#refreshSessionBtn', 'click', async () => {
-        document.getElementById('sessionWarning')?.classList.remove('active');
-        clearCredentials(); await auth.session.end();
-        store.set('auth.isLoggedIn', false); window.location.reload();
-    });
-    on('#dismissSessionBtn', 'click', () => document.getElementById('sessionWarning')?.classList.remove('active'));
     listen('auth:expired', () => {
-        store.set('auth.isLoggedIn', false); clearCredentials();
+        if (_expiryInterval) { clearInterval(_expiryInterval); _expiryInterval = null; }
+        if (_expiryToastId)  { notify.dismiss(_expiryToastId); _expiryToastId = null; }
+        store.set('auth.isLoggedIn', false);
+        clearCredentials();
         window._isPolling = window._latencyStarted = false;
-        document.getElementById('sessionWarning')?.classList.remove('active');
         modal.open('loginModal');
     });
+
 </script>

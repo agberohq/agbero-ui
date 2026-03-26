@@ -395,3 +395,5 @@ class RouteGraph {
         d.fy = null;
     }
 }
+// Expose on window so the lazy-loader guard (window.RouteGraph) works correctly.
+window.RouteGraph = RouteGraph;

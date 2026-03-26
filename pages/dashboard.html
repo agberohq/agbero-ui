@@ -68,7 +68,7 @@
 </div>
 
 <script type="module">
-    import { component, listen, emit, chart, on, query, queryAll } from '../lib/oja.full.esm.js';
+    import { component, listen, emit, chart, on, query, queryAll, clickmenu } from '../lib/oja.full.esm.js';
     import { store } from '../js/store.js';
 
     let mainChart = null;
@@ -297,12 +297,46 @@
     // Subscribe to global metrics — no independent poll
     unsub = listen('metrics:updated', processMetrics);
 
-    // Top host click — navigate to hosts page with filter
+    // Top host — left-click navigates to hosts page with domain pre-searched
     on('#hostBriefing', 'click', (e) => {
         const row = e.target.closest('[data-hostname]');
         if (!row) return;
         emit('hosts:search', { term: row.dataset.hostname });
-        window._router?.navigate('/hosts');
+        emit('app:navigate', { path: '/hosts' });
+    });
+
+    // Top host — right-click context menu
+    on('#hostBriefing', 'contextmenu', (e) => {
+        const row = e.target.closest('[data-hostname]');
+        if (!row) return;
+        e.preventDefault();
+        const domain = row.dataset.hostname;
+        clickmenu.show(e.clientX, e.clientY, [
+            {
+                label:  'Go to host',
+                icon:   '🔗',
+                action: () => {
+                    emit('hosts:search', { term: domain });
+                    emit('app:navigate', { path: '/hosts' });
+                },
+            },
+            {
+                label:  'Performance',
+                icon:   '📈',
+                action: () => emit('perf:open', { hostname: domain }),
+            },
+            { separator: true },
+            {
+                label:  'Edit config',
+                icon:   '✏️',
+                action: () => {
+                    emit('hosts:search', { term: domain });
+                    emit('app:navigate', { path: '/hosts' });
+                    // Small delay so the hosts page mounts before we open the drawer
+                    setTimeout(() => emit('host:open-edit', { domain }), 150);
+                },
+            },
+        ]);
     });
 
     // Chart tabs

@@ -9,8 +9,8 @@
 </div>
 
 <script type="module">
-    import { component, on, emit, listen, modal, ui, clipboard, notify, query, queryAll, pagination } from '../lib/oja.full.esm.js';
-    import { store, getCreds } from '../js/store.js';
+    import { component, on, emit, listen, modal, ui, clipboard, notify, query, queryAll, pagination, Search } from '../lib/oja.full.esm.js';
+    import { store } from '../js/store.js';
     import { fetchUptime, fmtNum, addHost, deleteHost } from '../js/api.js';
 
     // ── Helpers ────────────────────────────────────────────────────────────────
@@ -177,7 +177,7 @@
 
         return `
         <div class="host-row" data-hostname="${hostname}">
-            <div class="host-header" data-action="open-perf" data-hostname="${hostname}">
+            <div class="host-header" data-hostname="${hostname}">
                 <div>
                     <div class="host-name">
                         ${hostname}
@@ -187,7 +187,12 @@
                     ${cfgHost.domains?.length > 1 ? `<div class="host-meta">${cfgHost.domains.join(', ')}</div>` : ''}
                 </div>
                 <div style="display:flex;align-items:center;gap:8px;">
-                    <span class="host-perf-hint">Performance &nearr;</span>
+                    <div class="host-sparkline" id="spark-${hostname}"
+                         data-action="open-perf" data-hostname="${hostname}"
+                         title="Requests/sec — click for performance details"
+                         style="display:none;"></div>
+                    <span class="host-perf-hint" id="spark-hint-${hostname}"
+                          data-action="open-perf" data-hostname="${hostname}">Performance &nearr;</span>
                     ${editBtn}
                     ${deleteBtn}
                 </div>
@@ -212,24 +217,50 @@
 
     // ── Render ─────────────────────────────────────────────────────────────────
 
-    function filteredEntries() {
+    // ── Search index — rebuilt whenever host data changes ─────────────────────
+    // Oja's Search class provides scored, fuzzy multi-field matching.
+    // We index every host as a flat document so a single term like "nginx"
+    // matches hostnames, domains, backend URLs, and route paths in one pass.
+
+    let _searchIndex   = null;
+    let _searchIndexTs = 0;   // timestamp of last index build
+
+    function _buildSearchIndex() {
         const hostsStats  = (store.get('hostsData') || {}).stats || {};
         const configHosts = (store.get('lastConfig') || {}).hosts || {};
-        const term        = (store.get('searchTerm') || '').toLowerCase();
 
-        return Object.entries(hostsStats).filter(([hostname, hStats]) => {
-            if (!term) return true;
-            const cfgHost    = configHosts[hostname] || {};
-            const domainsStr = (cfgHost.domains || [hostname]).join(' ');
-            if (hostname.toLowerCase().includes(term)) return true;
-            if (domainsStr.toLowerCase().includes(term)) return true;
-            for (const route of (hStats.routes || [])) {
-                for (const b of (route.backends || [])) {
-                    if ((b.url || b.address || '').toLowerCase().includes(term)) return true;
-                }
-            }
-            return false;
+        const docs = Object.entries(hostsStats).map(([hostname, hStats]) => {
+            const cfg      = configHosts[hostname] || {};
+            const domains  = (cfg.domains || [hostname]).join(' ');
+            const backends = (hStats.routes || [])
+                .flatMap(r => (r.backends || []).map(b => b.url || b.address || ''))
+                .join(' ');
+            const paths = (hStats.routes || []).map(r => r.path || '/').join(' ');
+            return { id: hostname, hostname, domains, backends, paths };
         });
+
+        _searchIndex   = new Search(docs, {
+            fields:  ['hostname', 'domains', 'backends', 'paths'],
+            weights: { hostname: 3, domains: 2, backends: 1, paths: 1 },
+            fuzzy:   true,
+        });
+        _searchIndexTs = Date.now();
+    }
+
+    function filteredEntries() {
+        const hostsStats = (store.get('hostsData') || {}).stats || {};
+        const term       = (store.get('searchTerm') || '').trim();
+
+        if (!term) return Object.entries(hostsStats);
+
+        // Rebuild the index when host data is stale (first call or after a refresh)
+        if (!_searchIndex || _searchIndexTs < (store.get('hostsData')?._ts || 0)) {
+            _buildSearchIndex();
+        }
+
+        return _searchIndex.search(term)
+            .map(r => [r.doc.hostname, hostsStats[r.doc.hostname]])
+            .filter(([, v]) => v !== undefined);
     }
 
     function renderPage() {
@@ -260,6 +291,49 @@
             .map(([hostname, hStats]) => hostCardHtml(hostname, hStats, configHosts[hostname] || {}, term, certificates))
             .join('');
 
+        // ── Draw sparklines after DOM is ready ────────────────────────────────
+        pageSlice.forEach(([hostname]) => {
+            const el     = query('#spark-' + hostname);
+            const hintEl = query('#spark-hint-' + hostname);
+            if (!el) return;
+
+            const spark   = store.get('sparklines.' + hostname);
+            const hasData = spark?.rps?.length >= 3;
+
+            // Swap: hint visible when no data, sparkline visible when data exists
+            if (hintEl) hintEl.style.display = hasData ? 'none' : '';
+            el.style.display = hasData ? '' : 'none';
+            if (!hasData) return;
+
+            const vals = spark.rps;
+            const W = 84, H = 28, P = 3;
+            const iW = W - P * 2, iH = H - P * 2;
+            const max = Math.max(...vals, 0.001);
+            const n   = vals.length;
+            const xS  = i => (P + (i / Math.max(n - 1, 1)) * iW).toFixed(1);
+            const yS  = v => (P + iH - (v / max) * iH).toFixed(1);
+
+            const pts  = vals.map((v, i) => `${xS(i)},${yS(v)}`).join(' ');
+            const fX   = xS(0), lX = xS(n - 1), bY = (P + iH).toFixed(1);
+            const area = `M${fX},${bY} ` + vals.map((v, i) => `L${xS(i)},${yS(v)}`).join(' ') + ` L${lX},${bY} Z`;
+
+            const hasActivity = vals.some(v => v > 0);
+            const color = hasActivity ? 'var(--accent)' : 'var(--text-mute)';
+            const gid   = 'sk_' + hostname.replace(/[^a-z0-9]/gi, '_');
+
+            el.innerHTML = `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" style="display:block;overflow:visible;">
+                <defs><linearGradient id="${gid}" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%"   stop-color="${color}" stop-opacity="0.25"/>
+                    <stop offset="100%" stop-color="${color}" stop-opacity="0.02"/>
+                </linearGradient></defs>
+                <path d="${area}" fill="url(#${gid})"/>
+                <polyline points="${pts}" fill="none" stroke="${color}" stroke-width="1.5"
+                    stroke-linejoin="round" stroke-linecap="round"/>
+                <circle cx="${xS(n - 1)}" cy="${yS(vals[n - 1])}"
+                    r="2.5" fill="${color}" stroke="var(--bg)" stroke-width="1.5"/>
+            </svg>`;
+        });
+
         // Update store counts from full filtered set
         let routeCount = 0;
         all.forEach(([, h]) => { routeCount += (h.routes || []).length + (h.proxies || []).length; });
@@ -268,6 +342,7 @@
     }
 
     function syncList() {
+        _searchIndex = null; // invalidate so next filtered search rebuilds with fresh data
         pg.reset();
         renderPage();
     }
@@ -275,9 +350,9 @@
     async function refresh() {
         const btn = query('#refreshHostsBtn');
         if (btn) ui.btn.loading(btn, 'Refreshing…');
-        const data = await fetchUptime(getCreds());
+        const data = await fetchUptime();
         if (btn) ui.btn.reset(btn);
-        if (!data || data.__offline || data.__unauthorized) return;
+        if (!data) return;
         store.set('hostsData', { stats: data.hosts || {} });
         syncList();
     }
@@ -318,10 +393,7 @@
     });
 
     on('#addHostBtn',      'click', () => {
-        query('#addHostForm')?.reset();
-        const errEl = query('#addHostError');
-        if (errEl) errEl.style.display = 'none';
-        modal.open('addHostModal');
+        emit('host:open-add-wizard');
     });
 
     on('#refreshHostsBtn', 'click', refresh);
@@ -359,7 +431,7 @@
             message:   `Permanently delete configuration for <strong>${h}</strong>. This drops all traffic immediately.`,
             targetText: h,
             onConfirm: async () => {
-                await deleteHost(getCreds(), h);
+                await deleteHost(h);
                 notify.show(`${h} deleted`, 'success');
                 refresh();
             },
@@ -372,6 +444,17 @@
         store.set('searchTerm', term);
         syncList();
     });
+
+    // Emitted by dashboard right-click → Edit config
+    const unsubEdit = listen('host:open-edit', ({ domain }) => {
+        const config = store.get('lastConfig')?.hosts?.[domain];
+        if (!config) return;
+        query('#editHostTitle').innerText          = domain;
+        query('#editHostError').style.display      = 'none';
+        query('#editHostJsonTextarea').value       = JSON.stringify(config, null, 4);
+        query('#saveHostJsonBtn').dataset.hostname = domain;
+        modal.open('editHostJsonModal');
+    });
     const unsubRefresh = listen('hosts:refresh', refresh);
     const unsubMetrics = listen('metrics:updated', renderPage);
 
@@ -379,6 +462,7 @@
 
     component.onUnmount(() => {
         unsubSearch();
+        unsubEdit();
         unsubRefresh();
         unsubMetrics();
         stopPager?.();
