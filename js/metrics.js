@@ -1,6 +1,5 @@
 import { emit } from '../lib/oja.full.esm.js';
 import { fetchUptime } from './api.js';
-import { getCreds, clearCredentials } from './store.js';
 
 const METRICS_INTERVAL_MS  = 2000;
 const MILLISECONDS_IN_SEC  = 1000;
@@ -17,21 +16,9 @@ export function startMetricsPolling(store) {
 
     const poll = async () => {
         try {
-            const data = await fetchUptime(getCreds());
+            const data = await fetchUptime();
+            // Api returns null on network failure — handled centrally in main.js.
             if (!data) return;
-
-            if (data.__unauthorized) {
-                // 401 = auth failure, NOT an offline state — clear the banner
-                store.set('sys.isOffline', false);
-                clearCredentials();
-                emit('auth:expired');
-                return;
-            }
-
-            if (data.__offline) {
-                store.set('sys.isOffline', true);
-                return;
-            }
 
             store.set('sys.isOffline', false);
 
@@ -97,6 +84,41 @@ export function startMetricsPolling(store) {
             // hosts.html reads this directly; no separate fetch needed there
             store.set('hostsData', { stats: hosts });
 
+            // ── Sparkline ring buffers — per-host rolling 30-point window ────
+            // Accumulates RPS delta and avg p99 per host for inline sparklines.
+            // client-side only — no backend change needed.
+            const now30 = Date.now();
+            for (const [hostname, host] of Object.entries(hosts)) {
+                const sparkKey  = 'sparklines.' + hostname;
+                const existing  = store.get(sparkKey) || { rps: [], p99: [], ts: [], lastReqs: 0 };
+
+                // RPS delta — requests since last poll
+                const curReqs   = host.total_reqs || 0;
+                const elapsed   = (now30 - (existing.lastTs || now30)) / 1000 || 1;
+                const hostRps   = existing.lastReqs > 0 && curReqs > existing.lastReqs
+                    ? ((curReqs - existing.lastReqs) / elapsed)
+                    : 0;
+
+                // Avg p99 across all routes for this host
+                let p99sum = 0, p99cnt = 0;
+                for (const r of (host.routes || [])) {
+                    for (const b of (r.backends || [])) {
+                        const v = b.latency_us?.p99;
+                        if (v > 0) { p99sum += v / 1000; p99cnt++; }
+                    }
+                }
+                const hostP99 = p99cnt > 0 ? p99sum / p99cnt : 0;
+
+                const MAX_SPARK = 30;
+                store.set(sparkKey, {
+                    rps:      [...existing.rps.slice(-(MAX_SPARK - 1)),      hostRps],
+                    p99:      [...existing.p99.slice(-(MAX_SPARK - 1)),      hostP99],
+                    ts:       [...(existing.ts  || []).slice(-(MAX_SPARK - 1)), now30],
+                    lastReqs: curReqs,
+                    lastTs:   now30,
+                });
+            }
+
             // ── Response time history for dashboard chart ────────────────────
             const history = store.get('metricsHistory') || { all: [], http: [], tcp: [] };
             history.all.push(data.global?.avg_p99_ms  ?? 0);
@@ -121,7 +143,11 @@ export function startMetricsPolling(store) {
 
             emit('cluster:updated', { clusterStats: data.cluster });
 
-        } catch {
+        } catch (err) {
+            // Log but don't crash the poll loop — Api errors are handled centrally
+            if (err?.name !== 'AbortError') {
+                console.warn('[agbero/metrics] poll error:', err?.message || err);
+            }
             store.set('sys.isOffline', true);
         }
     };
