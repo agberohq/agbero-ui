@@ -1,20 +1,109 @@
 <nav class="navbar">
-    <div class="brand">AGBERO <span>ADMIN</span></div>
-    <div class="menu">
+    <a href="#/" class="brand" style="text-decoration:none;">AGBERO <span>ADMIN</span></a>
+
+    <!-- Flex spacer — pushes everything else to the right -->
+    <div style="flex:1;min-width:0;"></div>
+
+    <!-- All nav links inline. CSS hides them progressively at narrow widths.
+         The ··· overflow only appears when links are hidden. -->
+    <div class="menu" id="navMenu">
         <a href="#/" class="nav-link" data-page="/">dashboard</a>
         <a href="#/hosts" class="nav-link" data-page="/hosts">hosts</a>
-        <a href="#/cluster" class="nav-link" data-page="/cluster">cluster</a>
-        <a href="#/map" class="nav-link" data-page="/map">map</a>
-        <a href="#/firewall" class="nav-link" data-page="/firewall">firewall</a>
-        <a href="#/logs" class="nav-link" data-page="/logs">logs</a>
-        <a href="#/config" class="nav-link" data-page="/config">config</a>
-        <a href="#/keeper" class="nav-link" data-page="/keeper">keeper</a>
+        <a href="#/logs" class="nav-link nav-hide-md" data-page="/logs">logs</a>
+        <a href="#/cluster" class="nav-link nav-hide-md" data-page="/cluster">cluster</a>
+        <a href="#/map" class="nav-link nav-hide-lg" data-page="/map">map</a>
+        <a href="#/firewall" class="nav-link nav-hide-lg" data-page="/firewall">firewall</a>
+        <a href="#/config" class="nav-link nav-hide-xl" data-page="/config">config</a>
+        <a href="#/keeper" class="nav-link nav-hide-xl" data-page="/keeper">keeper</a>
+        <a href="#/certs" class="nav-link nav-hide-xl" data-page="/certs">certs</a>
+
+        <!-- ··· overflow — only visible when some links are hidden -->
+        <div class="nav-overflow nav-show-overflow" id="navOverflow">
+            <button class="nav-overflow-btn" id="navOverflowBtn" title="More pages" aria-expanded="false">···</button>
+            <div class="nav-overflow-menu" id="navOverflowMenu">
+                <!-- populated by JS based on which links are currently hidden -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Right icon cluster: target node · theme · avatar · lock -->
+    <div class="nav-right">
         <button id="targetHostBtn" class="target-btn" title="Change target node" data-host="local">⬡</button>
-        <button id="themeToggle" class="theme-toggle" title="Toggle theme">◑</button>
-        <a href="#/profile" class="nav-link" data-page="/profile" id="profileNavLink">profile</a>
-        <a href="#" id="loginBtn" class="nav-link" style="margin-left:10px;" data-oja-bind="auth.isLoggedIn" data-oja-transform="loginText">Login</a>
+
+        <!-- Theme picker -->
+        <div class="nav-overflow" id="themeOverflow">
+            <button class="theme-toggle" id="themeToggle" title="Switch theme">◑</button>
+            <div class="nav-overflow-menu" id="themeMenu" style="right:0;left:auto;min-width:130px;">
+                <button class="nav-overflow-item" data-theme-pick="light">☀️  Light</button>
+                <button class="nav-overflow-item" data-theme-pick="dark">🌙  Dark</button>
+                <button class="nav-overflow-item" data-theme-pick="dracula">🧛  Dracula</button>
+                <button class="nav-overflow-item" data-theme-pick="monokai">🎨  Monokai</button>
+            </div>
+        </div>
+
+        <!-- Profile avatar (initials from JWT) -->
+        <a href="#/profile" id="profileNavLink" class="nav-avatar" data-page="/profile" title="Profile">?</a>
+
+        <!-- Login / Logout padlock icon -->
+        <button id="loginBtn" class="nav-auth-btn" title="Login">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+            </svg>
+        </button>
+
+        <!-- Hamburger — mobile only, hidden on desktop via CSS -->
+        <button class="nav-hamburger" id="navHamburger" title="Menu" aria-label="Open navigation">
+            <span class="hamburger-line"></span>
+            <span class="hamburger-line"></span>
+            <span class="hamburger-line"></span>
+        </button>
     </div>
 </nav>
+
+<!-- Mobile slide-in drawer — full page list with icons -->
+<div class="nav-mobile-drawer" id="navMobileDrawer">
+    <button class="nav-mobile-close" id="navMobileClose" aria-label="Close">✕</button>
+    <a href="#/" class="nav-mobile-link" data-page="/">
+        <svg class="nav-mobile-icon" viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+        Dashboard
+    </a>
+    <a href="#/hosts" class="nav-mobile-link" data-page="/hosts">
+        <svg class="nav-mobile-icon" viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+        Hosts
+    </a>
+    <a href="#/logs" class="nav-mobile-link" data-page="/logs">
+        <svg class="nav-mobile-icon" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+        Logs
+    </a>
+    <a href="#/cluster" class="nav-mobile-link" data-page="/cluster">
+        <svg class="nav-mobile-icon" viewBox="0 0 24 24"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
+        Cluster
+    </a>
+    <a href="#/map" class="nav-mobile-link" data-page="/map">
+        <svg class="nav-mobile-icon" viewBox="0 0 24 24"><polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"/><line x1="8" y1="2" x2="8" y2="18"/><line x1="16" y1="6" x2="16" y2="22"/></svg>
+        Map
+    </a>
+    <a href="#/firewall" class="nav-mobile-link" data-page="/firewall">
+        <svg class="nav-mobile-icon" viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+        Firewall
+    </a>
+    <a href="#/config" class="nav-mobile-link" data-page="/config">
+        <svg class="nav-mobile-icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
+        Config
+    </a>
+    <a href="#/keeper" class="nav-mobile-link" data-page="/keeper">
+        <svg class="nav-mobile-icon" viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+        Keeper
+    </a>
+    <a href="#/certs" class="nav-mobile-link" data-page="/certs">
+        <svg class="nav-mobile-icon" viewBox="0 0 24 24"><circle cx="12" cy="8" r="7"/><polyline points="8.21 13.89 7 23 12 20 17 23 15.79 13.88"/></svg>
+        Certificates
+    </a>
+    <a href="#/profile" class="nav-mobile-link" data-page="/profile">
+        <svg class="nav-mobile-icon" viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+        Profile
+    </a>
+</div>
 
 <div id="offlineBanner" class="offline-banner" style="display: none; background: var(--danger, #ff3b30); color: #fff; text-align: center; padding: 10px; font-size: 13px; font-weight: 500; letter-spacing: 0.4px; z-index: 9999; position: relative;">
     ⚠️ Connection lost. Attempting to reconnect...
@@ -113,10 +202,6 @@
         <div id="loginError" style="color:var(--danger);font-size:11px;margin-top:10px;display:none;text-align:center;"></div>
     </div>
 </div>
-</form>
-<div id="loginError" style="color:var(--danger);font-size:11px;margin-top:10px;display:none;text-align:center;"></div>
-</div>
-</div>
 
 <div class="modal-overlay" id="ruleModal">
     <div class="modal">
@@ -180,17 +265,19 @@
     <div class="modal" style="max-width: 650px; width: 95vw;">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
             <h3 style="margin:0;font-size:15px;">Edit: <span id="editHostTitle" class="mono" style="font-size:14px;"></span></h3>
-            <button id="formatHostJsonBtn" type="button" class="btn small">Format</button>
+            <div style="display:flex;gap:6px;align-items:center;">
+                <span style="font-size:11px;color:var(--text-mute);background:var(--hover-bg);padding:2px 8px;border-radius:3px;font-family:var(--font-mono);">HCL</span>
+                <button id="formatHostJsonBtn" type="button" class="btn small">Format</button>
+            </div>
         </div>
-        <div id="editHostFormatTabs" style="margin-bottom:10px;"></div>
-        <p style="font-size:11px;color:var(--text-mute);margin:0 0 10px;">Changes save immediately to disk and hot-reload.</p>
+        <p style="font-size:11px;color:var(--text-mute);margin:0 0 10px;">Edit raw HCL — comments and formatting are preserved. Changes save to disk and hot-reload.</p>
 
         <div id="editHostError" style="color:var(--danger);font-size:12px;margin-bottom:10px;display:none;background:rgba(255,59,48,0.1);padding:8px;border-radius:4px;"></div>
 
         <textarea id="editHostJsonTextarea" class="json-editor" spellcheck="false"></textarea>
 
         <div style="display:flex; gap:10px; margin-top:15px;">
-            <button id="saveHostJsonBtn" class="btn primary" style="flex:1;">Save Configuration</button>
+            <button id="saveHostJsonBtn" class="btn primary" style="flex:1;">Save</button>
             <button class="btn close-modal" style="width:100px;">Cancel</button>
         </div>
     </div>
@@ -199,18 +286,18 @@
 <!-- PERFORMANCE GRAPH MODAL -->
 <div class="modal-overlay" id="perfModal">
     <div class="modal modal-perf">
-        <button class="perf-close-btn close-modal" title="Close">&#x2715;</button>
-        <div class="perf-modal-header" style="display: flex; align-items: center; justify-content: space-between;">
-            <div>
+        <div class="perf-modal-header">
+            <div style="flex:1;min-width:0;">
                 <h3 id="perfModalTitle" style="margin:0;">Performance History</h3>
-                <span id="perfModalHost" style="font-size:11px;color:var(--text-mute);font-family:monospace;"></span>
+                <span id="perfModalHost" style="font-size:11px;color:var(--text-mute);font-family:var(--font-mono);"></span>
             </div>
-            <select id="perfRangeSelect" class="perf-range-select" style="width: auto; min-width: 130px; margin-bottom: 0;">
+            <select id="perfRangeSelect" class="perf-range-select" style="margin:0 8px 0 16px;flex-shrink:0;">
                 <option value="30m">Last 30 min</option>
                 <option value="1h" selected>Last 1 hour</option>
                 <option value="6h">Last 6 hours</option>
                 <option value="24h">Last 24 hours</option>
             </select>
+            <button class="perf-close-btn close-modal" title="Close">&#x2715;</button>
         </div>
         <div class="perf-charts-grid">
             <div class="perf-chart-cell"><div class="perf-chart-label">Requests / sec</div><div class="perf-chart-area" id="perfChartReqs"></div></div>
@@ -221,6 +308,52 @@
         <div class="perf-modal-footer">
             <span id="perfDataRange" style="font-size:10px;color:var(--text-mute);"></span>
             <span style="font-size:10px;color:var(--text-mute);">Sampled every 60s &bull; 24h max retention</span>
+        </div>
+    </div>
+</div>
+
+<!-- Command palette — Ctrl+K -->
+<div class="modal-overlay" id="commandPaletteModal" style="align-items:flex-start;padding-top:80px;">
+    <div style="background:var(--bg);border:1px solid var(--border);border-radius:10px;width:100%;max-width:480px;box-shadow:0 16px 40px rgba(0,0,0,.2);overflow:hidden;">
+        <div style="display:flex;align-items:center;padding:0 14px;border-bottom:1px solid var(--border);">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--text-mute)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            <input type="text" id="cmdPaletteInput" placeholder="Go to page…"
+                   autocomplete="off" spellcheck="false"
+                   style="flex:1;border:none;background:none;padding:14px 10px;font-size:14px;color:var(--text-main);outline:none;font-family:var(--font-sans);">
+            <kbd style="font-size:10px;padding:2px 6px;border:1px solid var(--border);border-radius:4px;color:var(--text-mute);font-family:var(--font-mono);">Esc</kbd>
+        </div>
+        <div id="cmdPaletteResults" style="max-height:320px;overflow-y:auto;padding:4px;"></div>
+    </div>
+</div>
+
+<!-- Keyboard shortcuts help — Ctrl+? -->
+<div class="modal-overlay" id="shortcutsModal">
+    <div class="modal-box" style="max-width:400px;">
+        <div class="modal-header">
+            <h3 style="margin:0;font-size:14px;">Keyboard Shortcuts</h3>
+            <button class="close-modal" data-modal="shortcutsModal" style="background:none;border:none;cursor:pointer;font-size:18px;color:var(--text-mute);padding:0 4px;">✕</button>
+        </div>
+        <div style="padding:16px 20px;">
+            <div style="display:grid;grid-template-columns:auto 1fr;gap:6px 20px;font-size:13px;">
+                <kbd class="help-kbd">Ctrl+1–9, 0</kbd><span style="color:var(--text-mute);">Navigate pages</span>
+                <kbd class="help-kbd">Ctrl+K</kbd><span style="color:var(--text-mute);">Command palette</span>
+                <kbd class="help-kbd">Ctrl+?</kbd><span style="color:var(--text-mute);">This help</span>
+                <kbd class="help-kbd">/</kbd><span style="color:var(--text-mute);">Focus host search</span>
+                <kbd class="help-kbd">r</kbd><span style="color:var(--text-mute);">Refresh current page</span>
+                <kbd class="help-kbd">Esc</kbd><span style="color:var(--text-mute);">Close drawer / palette</span>
+            </div>
+            <div style="margin-top:16px;border-top:1px solid var(--border);padding-top:14px;display:grid;grid-template-columns:auto 1fr;gap:6px 20px;font-size:12px;color:var(--text-mute);">
+                <kbd class="help-kbd">Ctrl+1</kbd><span>Dashboard</span>
+                <kbd class="help-kbd">Ctrl+2</kbd><span>Hosts</span>
+                <kbd class="help-kbd">Ctrl+3</kbd><span>Cluster</span>
+                <kbd class="help-kbd">Ctrl+4</kbd><span>Map</span>
+                <kbd class="help-kbd">Ctrl+5</kbd><span>Firewall</span>
+                <kbd class="help-kbd">Ctrl+6</kbd><span>Logs</span>
+                <kbd class="help-kbd">Ctrl+7</kbd><span>Config</span>
+                <kbd class="help-kbd">Ctrl+8</kbd><span>Keeper</span>
+                <kbd class="help-kbd">Ctrl+9</kbd><span>Profile</span>
+                <kbd class="help-kbd">Ctrl+0</kbd><span>Certificates</span>
+            </div>
         </div>
     </div>
 </div>
@@ -261,14 +394,22 @@
 
 <script type="module">
     import { modal, layout, emit, listen, chart, on, auth, ui, query, queryAll, notify, wizard, collapse, tabs } from '../lib/oja.full.esm.js';
-    import { store, isLoggedIn, clearCredentials, getHost, setHost } from '../js/store.js';
-    import { fetchTelemetry, login, fetchStatus, addFirewallRule, broadcastClusterRoute,
-        addHost, addHostHCL, checkHostExists, deleteHost } from '../js/api.js';
+    import { store, isLoggedIn, clearCredentials, getCreds, getHost, setHost } from '../js/store.js';
+    import { fetchTelemetry, login, logout, fetchStatus, addFirewallRule, broadcastClusterRoute,
+        addHost, addHostHCL, updateHost, updateHostHCL, checkHostExists, deleteHost } from '../js/api.js';
     import { buildHostConfig } from '../js/host-builder.js';
     import { formatHCL, validateHCL } from '../js/hcl.js';
+    import { initials } from '../js/utils.js';
     // Shell emits events for app-level actions — main.js owns the responses.
     // No imports from main.js — that would create a circular dependency.
     let _perfCharts = null;
+
+    // ── layout.onUnmount — MUST be at top level of layout script, synchronously ─
+    // Oja captures the active layout context only while this script executes.
+    // Cleanup for polling timers is emitted as an event to main.js.
+    layout.onUnmount(() => {
+        emit('app:layout-unmount');
+    });
 
     // JSON Syntax Highlighter wrapper (Outputs beautifully themed <pre> block)
     window.app = window.app || {};
@@ -308,7 +449,109 @@
         query('#loginNodeEdit').style.display = 'none';
     });
 
-    on('#themeToggle', 'click', () => { ui.theme.toggle(); });
+    // ── Nav: avatar initials from JWT ─────────────────────────────────────────
+    function _updateAvatar() {
+        const { token } = getCreds();
+        let name = 'A';
+        try {
+            if (token) {
+                const p = JSON.parse(atob(token.split('.')[1]));
+                name = p.user || p.sub || p.username || 'A';
+            }
+        } catch {}
+        const avatar = query('#profileNavLink');
+        if (avatar) avatar.textContent = initials(name);
+    }
+    _updateAvatar();
+
+    // ── Nav: overflow dropdown — auto-populate from CSS-hidden links ──────────
+    // The ··· button and its menu only exist for links that CSS hides at this
+    // viewport width. We rebuild the menu on every resize so it stays accurate.
+    function _rebuildOverflowMenu() {
+        const menu   = query('#navOverflowMenu');
+        const btn    = query('#navOverflowBtn');
+        const wrap   = query('#navOverflow');
+        if (!menu) return;
+
+        // Collect all nav links that are currently display:none via CSS
+        const hidden = Array.from(document.querySelectorAll('.menu .nav-link')).filter(el => {
+            return window.getComputedStyle(el).display === 'none';
+        });
+
+        menu.innerHTML = hidden.map(el => {
+            const page = el.dataset.page || el.getAttribute('href')?.replace('#','') || '';
+            const label = el.textContent.trim();
+            return `<a href="${el.getAttribute('href')}" class="nav-overflow-item" data-page="${page}">${label}</a>`;
+        }).join('');
+
+        // Show/hide the ··· button based on whether there are hidden links
+        if (wrap) wrap.style.display = hidden.length > 0 ? '' : 'none';
+    }
+
+    // Rebuild on load and on resize
+    _rebuildOverflowMenu();
+    window.addEventListener('resize', _rebuildOverflowMenu);
+
+    // ── Nav: overflow dropdown toggle ─────────────────────────────────────────
+    on('#navOverflowBtn', 'click', (e) => {
+        e.stopPropagation();
+        const c = query('#navOverflow');
+        const isOpen = c.classList.toggle('open');
+        query('#navOverflowBtn')?.setAttribute('aria-expanded', isOpen);
+    });
+
+    on('#themeToggle', 'click', (e) => {
+        e.stopPropagation();
+        query('#themeOverflow')?.classList.toggle('open');
+    });
+
+    // Close all overflow menus on outside click
+    document.addEventListener('click', () => {
+        document.querySelectorAll('.nav-overflow.open').forEach(el => el.classList.remove('open'));
+    });
+
+    // ── Nav: theme picker ─────────────────────────────────────────────────────
+    const THEMES = ['light', 'dark', 'dracula', 'monokai'];
+
+    function _applyTheme(name) {
+        document.documentElement.setAttribute('data-theme', name);
+        localStorage.setItem('ag-theme', name);
+        document.querySelectorAll('[data-theme-pick]').forEach(btn => {
+            btn.style.fontWeight = btn.dataset.themePick === name ? '600' : '';
+        });
+    }
+
+    const _savedTheme = localStorage.getItem('ag-theme');
+    if (_savedTheme && THEMES.includes(_savedTheme)) {
+        _applyTheme(_savedTheme);
+    } else {
+        _applyTheme(window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+    }
+
+    on('[data-theme-pick]', 'click', (e, btn) => {
+        _applyTheme(btn.dataset.themePick);
+        query('#themeOverflow')?.classList.remove('open');
+    });
+
+    // ── Nav: mobile hamburger — class-based, never inline style ──────────────
+    // Using classes means the CSS media query `display:none !important` at
+    // desktop width wins cleanly — no inline style fights the stylesheet.
+    on('#navHamburger', 'click', () => {
+        query('#navMobileDrawer')?.classList.add('open');
+    });
+    on('#navMobileClose', 'click', () => {
+        query('#navMobileDrawer')?.classList.remove('open');
+    });
+    on('.nav-mobile-link', 'click', () => {
+        query('#navMobileDrawer')?.classList.remove('open');
+    });
+    // Close drawer on backdrop click (tap outside)
+    document.addEventListener('click', (e) => {
+        const drawer = query('#navMobileDrawer');
+        if (drawer?.classList.contains('open') && !drawer.contains(e.target) && e.target !== query('#navHamburger')) {
+            drawer.classList.remove('open');
+        }
+    });
 
     on('#targetHostBtn', 'click', () => { query('#targetHostInput').value = getHost(); modal.open('targetHostModal'); });
     on('#targetHostForm', 'submit', (e, el) => {
@@ -319,15 +562,140 @@
     on('#loginBtn', 'click', async e => {
         e.preventDefault();
         if (isLoggedIn()) {
+            await logout();
             clearCredentials(); await auth.session.end();
             store.set('auth.isLoggedIn', false);
             window._isPolling = false; window._latencyStarted = false;
+            _setAuthIcon(false);
+            return;
         }
         updateNodeDisplay();
         _loginReset();
         modal.open('loginModal');
         requestAnimationFrame(() => query('#username')?.focus());
     });
+
+    // Keep icon in sync with login/logout events
+    listen('auth:login:success', () => { _setAuthIcon(true);  _updateAvatar(); });
+    listen('auth:expired',       () => { _setAuthIcon(false); });
+
+    // ── Auth icon state helpers ───────────────────────────────────────────────
+    function _setAuthIcon(loggedIn) {
+        const btn = query('#loginBtn');
+        if (!btn) return;
+        if (loggedIn) {
+            // Open padlock = logged in (click to logout)
+            btn.title = 'Logout';
+            btn.setAttribute('data-logged-in', 'true');
+            btn.innerHTML = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 0 9.9-1"/>
+            </svg>`;
+        } else {
+            // Closed padlock = logged out (click to login)
+            btn.title = 'Login';
+            btn.setAttribute('data-logged-in', 'false');
+            btn.innerHTML = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+            </svg>`;
+        }
+    }
+    // Set initial state on load
+    _setAuthIcon(isLoggedIn());
+
+    // ── Command palette (Ctrl+K) ──────────────────────────────────────────────
+    const CMD_PAGES = [
+        { label: 'Dashboard',    path: '/',         keys: 'Ctrl+1', icon: '🏠' },
+        { label: 'Hosts',        path: '/hosts',     keys: 'Ctrl+2', icon: '🖥' },
+        { label: 'Cluster',      path: '/cluster',   keys: 'Ctrl+3', icon: '🔗' },
+        { label: 'Map',          path: '/map',       keys: 'Ctrl+4', icon: '🗺' },
+        { label: 'Firewall',     path: '/firewall',  keys: 'Ctrl+5', icon: '🛡' },
+        { label: 'Logs',         path: '/logs',      keys: 'Ctrl+6', icon: '📄' },
+        { label: 'Config',       path: '/config',    keys: 'Ctrl+7', icon: '⚙️' },
+        { label: 'Keeper',       path: '/keeper',    keys: 'Ctrl+8', icon: '🔐' },
+        { label: 'Profile',      path: '/profile',   keys: 'Ctrl+9', icon: '👤' },
+        { label: 'Certificates', path: '/certs',     keys: 'Ctrl+0', icon: '📜' },
+    ];
+
+    function _renderCmdResults(term) {
+        const el = query('#cmdPaletteResults');
+        if (!el) return;
+        const filtered = term
+            ? CMD_PAGES.filter(p => p.label.toLowerCase().includes(term.toLowerCase()))
+            : CMD_PAGES;
+        if (!filtered.length) {
+            el.innerHTML = `<div style="padding:14px 16px;font-size:13px;color:var(--text-mute);">No results</div>`;
+            return;
+        }
+        el.innerHTML = filtered.map((p, i) => `
+            <button class="cmd-item${i === 0 ? ' cmd-item-active' : ''}" data-path="${p.path}"
+                    style="width:100%;display:flex;align-items:center;gap:12px;padding:10px 14px;
+                           background:${i === 0 ? 'var(--hover-bg)' : 'none'};border:none;border-radius:6px;
+                           cursor:pointer;text-align:left;font-family:var(--font-sans);transition:background .1s;">
+                <span style="font-size:15px;width:20px;text-align:center;">${p.icon}</span>
+                <span style="flex:1;font-size:13px;color:var(--text-main);">${p.label}</span>
+                <kbd style="font-size:10px;padding:2px 6px;border:1px solid var(--border);border-radius:4px;
+                            color:var(--text-mute);font-family:var(--font-mono);">${p.keys}</kbd>
+            </button>`).join('');
+    }
+
+    listen('app:command-palette', () => {
+        modal.open('commandPaletteModal');
+        const inp = query('#cmdPaletteInput');
+        if (inp) { inp.value = ''; _renderCmdResults(''); }
+        requestAnimationFrame(() => inp?.focus());
+    });
+
+    listen('app:command-palette-close', () => {
+        modal.closeById('commandPaletteModal');
+    });
+
+    on('#cmdPaletteInput', 'input', (e, el) => _renderCmdResults(el.value));
+
+    on('#cmdPaletteInput', 'keydown', (e) => {
+        const items = queryAll('#cmdPaletteResults .cmd-item');
+        if (!items.length) return;
+        const active = Array.from(items).findIndex(i => i.classList.contains('cmd-item-active'));
+        if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            const next = (active + 1) % items.length;
+            items.forEach((it, i) => { it.classList.toggle('cmd-item-active', i === next); it.style.background = i === next ? 'var(--hover-bg)' : 'none'; });
+        } else if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            const prev = (active - 1 + items.length) % items.length;
+            items.forEach((it, i) => { it.classList.toggle('cmd-item-active', i === prev); it.style.background = i === prev ? 'var(--hover-bg)' : 'none'; });
+        } else if (e.key === 'Enter') {
+            e.preventDefault();
+            const activeItem = items[active] || items[0];
+            if (activeItem?.dataset.path) {
+                modal.closeById('commandPaletteModal');
+                emit('app:navigate', { path: activeItem.dataset.path });
+            }
+        }
+    });
+
+    on('.cmd-item', 'click', (e, btn) => {
+        if (btn.dataset.path) {
+            modal.closeById('commandPaletteModal');
+            emit('app:navigate', { path: btn.dataset.path });
+        }
+    });
+
+    // Close palette on overlay click
+    on('#commandPaletteModal', 'click', (e) => {
+        if (e.target === query('#commandPaletteModal')) modal.closeById('commandPaletteModal');
+    });
+
+    // ── Ctrl+? help modal ─────────────────────────────────────────────────────
+    // Registered directly here because shell.html is the layout — keyboard events
+    // that need modal.open must live inside the layout script, not main.js.
+    document.addEventListener('keydown', (e) => {
+        if ((e.ctrlKey || e.metaKey) && e.key === '?') {
+            e.preventDefault();
+            modal.open('shortcutsModal');
+        }
+    });
+
+    on('[data-modal="shortcutsModal"]', 'click', () => modal.closeById('shortcutsModal'));
 
     // ── Login state machine ────────────────────────────────────────────────────
     // _loginPending holds credentials between step 1 and step 2 (TOTP).
@@ -451,7 +819,38 @@
         }
     });
 
-    // ── Add Host Wizard ───────────────────────────────────────────────────────
+    // ── Cluster route broadcast ────────────────────────────────────────────────
+    on('#clusterRouteForm', 'submit', async (e, form) => {
+        e.preventDefault();
+        const errEl = form.querySelector('#clusterRouteError') || (() => {
+            const d = document.createElement('div');
+            d.id = 'clusterRouteError';
+            d.style.cssText = 'color:var(--danger);font-size:12px;margin-bottom:8px;display:none;background:rgba(255,59,48,0.08);padding:8px;border-radius:4px;';
+            form.insertBefore(d, form.querySelector('button[type="submit"]'));
+            return d;
+        })();
+        errEl.style.display = 'none';
+        const submitBtn = form.querySelector('[type="submit"]');
+        ui.btn.loading(submitBtn, 'Broadcasting…');
+        try {
+            const result = await broadcastClusterRoute({
+                host: form.querySelector('#crHost').value.trim(),
+                route: {
+                    path:    form.querySelector('#crPath').value.trim() || '/',
+                    enabled: 'on',
+                    backends: { enabled: 'on', servers: [{ address: form.querySelector('#crTarget').value.trim(), weight: 1 }] }
+                },
+                ttl_seconds: parseInt(form.querySelector('#crTTL').value, 10) || 0,
+            });
+            if (result?.error) throw new Error(result.error);
+            ui.btn.done(submitBtn, 'Broadcast ✓');
+            setTimeout(() => modal.closeAll(), 800);
+        } catch(err) {
+            ui.btn.reset(submitBtn);
+            errEl.textContent = err.message || 'Broadcast failed';
+            errEl.style.display = 'block';
+        }
+    });
     // Opened by #addHostBtn (hosts.html). Uses oja/wizard.js for step-by-step flow.
 
     let _addHostWizard = null;
@@ -1017,7 +1416,8 @@
         function _wireWebEngine(el, route) {
             _wireToggleCards(el);
 
-            // Folder picker buttons
+            // Folder picker buttons — File System Access API only returns the folder NAME
+            // (not the full path) for security reasons. We use it as a hint and prompt the user.
             el.querySelectorAll('.wz-pick-folder').forEach(btn => {
                 btn.addEventListener('click', async () => {
                     const inp = btn.previousElementSibling;
@@ -1025,12 +1425,23 @@
                     if (window.showDirectoryPicker) {
                         try {
                             const dh = await window.showDirectoryPicker();
-                            inp.value = dh.name;
+                            // Browser returns folder name only, not full path.
+                            // Pre-fill as a hint; user must confirm/complete the full server path.
+                            const hint = dh.name;
+                            if (!inp.value.trim()) {
+                                inp.value = '/' + hint;
+                            } else {
+                                // If already has a path, append the name at the end as a guide
+                                inp.value = inp.value.replace(/\/?$/, '/') + hint;
+                            }
                             inp.dispatchEvent(new Event('input'));
-                        } catch(e) {}
+                            inp.focus();
+                            inp.select();
+                            notify.show(`Folder name "${hint}" inserted — complete the full server path`, 'info');
+                        } catch(e) { /* user cancelled */ }
                     } else {
                         inp.focus();
-                        notify.show('Directory picker not supported in this browser — type the path manually', 'info');
+                        notify.show('Type the full server path directly (e.g. /var/www/html)', 'info');
                     }
                 });
             });
@@ -1177,19 +1588,21 @@
                 const listEl = el.querySelector('#wzRestList');
                 if (!listEl) return;
                 listEl.innerHTML = rests.map((r, i) => `
-                    <div class="wz-backend-row" style="flex-direction:column;gap:6px;padding:10px;border:1px solid var(--border);border-radius:6px;margin-bottom:8px;" data-idx="${i}">
-                        <div style="display:flex;gap:6px;">
-                            <input type="text" class="wz-input wz-rest-name" placeholder="Name (e.g. stripe)" value="${r.name||''}" style="flex:1;">
-                            <select class="wz-select-inline wz-rest-method">
+                    <div class="wz-item-card" data-idx="${i}">
+                        <div class="wz-item-row">
+                            <input type="text" class="wz-input wz-rest-name" placeholder="Name (e.g. stripe)" value="${r.name||''}" style="flex:1;min-width:0;">
+                            <select class="wz-select-inline wz-rest-method" style="width:80px;flex-shrink:0;">
                                 ${['GET','POST','PUT','DELETE','PATCH'].map(m => `<option${r.method===m?' selected':''}>${m}</option>`).join('')}
                             </select>
-                            <button type="button" class="btn small wz-rest-remove" style="color:var(--danger);border-color:var(--danger);">✕</button>
+                            <button type="button" class="btn small wz-rest-remove" style="color:var(--danger);border-color:rgba(255,59,48,0.4);flex-shrink:0;width:var(--btn-h-sm);padding:0;" title="Remove">✕</button>
                         </div>
-                        <input type="text" class="wz-input wz-rest-url" placeholder="https://api.example.com/endpoint" value="${r.url||''}">
-                        <input type="text" class="wz-input wz-rest-auth" placeholder='Authorization header value — e.g. Bearer env.MY_API_KEY' value="${r.auth_header||''}">
-                        <div class="wz-hint">Use <code>env.VAR_NAME</code> to inject server environment variables — the value is resolved at runtime, never exposed to the browser.</div>
-                        <input type="text" class="wz-input-sm wz-rest-timeout" placeholder="Timeout (default 30s)" value="${r.timeout||''}" style="width:140px;">
-                    </div>`).join('') || '<div class="wz-hint" style="padding:8px;">No REST proxies yet.</div>';
+                        <input type="text" class="wz-input wz-rest-url" placeholder="https://api.example.com/endpoint" value="${r.url||''}" style="margin-top:5px;">
+                        <div class="wz-item-row" style="margin-top:5px;">
+                            <input type="text" class="wz-input wz-rest-auth" placeholder="Authorization: Bearer env.MY_API_KEY" value="${r.auth_header||''}" style="flex:1;min-width:0;">
+                            <input type="text" class="wz-input-sm wz-rest-timeout" placeholder="Timeout" value="${r.timeout||''}" style="width:80px;flex-shrink:0;">
+                        </div>
+                        <div class="wz-hint" style="margin-top:3px;">Use <code>env.VAR</code> to inject secrets — never exposed to the browser.</div>
+                    </div>`).join('') || '<div class="wz-hint" style="padding:6px 0;">No REST proxies yet.</div>';
 
                 listEl.querySelectorAll('[data-idx]').forEach(row => {
                     const i = +row.dataset.idx;
@@ -1206,28 +1619,28 @@
                 const listEl = el.querySelector('#wzWorkerList');
                 if (!listEl) return;
                 listEl.innerHTML = workers.map((wk, i) => `
-                    <div class="wz-backend-row" style="flex-direction:column;gap:6px;padding:10px;border:1px solid var(--border);border-radius:6px;margin-bottom:8px;" data-idx="${i}">
-                        <div style="display:flex;gap:6px;">
-                            <input type="text" class="wz-input wz-wk-name" placeholder="Name (e.g. pdf)" value="${wk.name||''}" style="flex:1;">
-                            <button type="button" class="btn small wz-wk-remove" style="color:var(--danger);border-color:var(--danger);">✕</button>
+                    <div class="wz-item-card" data-idx="${i}">
+                        <div class="wz-item-row">
+                            <input type="text" class="wz-input wz-wk-name" placeholder="Name (e.g. pdf-renderer)" value="${wk.name||''}" style="flex:1;min-width:0;">
+                            <button type="button" class="btn small wz-wk-remove" style="color:var(--danger);border-color:rgba(255,59,48,0.4);flex-shrink:0;width:var(--btn-h-sm);padding:0;" title="Remove">✕</button>
                         </div>
-                        <input type="text" class="wz-input wz-wk-command" placeholder="Command — e.g. node scripts/pdf.js or python3 worker.py" value="${wk.command||''}">
-                        <div class="wz-hint">Space-separated. Agbero manages the process lifecycle.</div>
-                        <div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:4px;">
+                        <input type="text" class="wz-input wz-wk-command" placeholder="Command — e.g. node scripts/pdf.js or python3 worker.py" value="${wk.command||''}" style="margin-top:5px;">
+                        <div class="wz-hint" style="margin-top:2px;">Space-separated. Agbero manages the process lifecycle.</div>
+                        <div class="wz-item-row" style="margin-top:8px;gap:16px;">
                             <label class="wz-check"><input type="checkbox" class="wz-wk-bg"${wk.background?' checked':''}> Background daemon</label>
                             <label class="wz-check"><input type="checkbox" class="wz-wk-once"${wk.run_once?' checked':''}> Run once at startup</label>
                         </div>
-                        <div style="display:flex;gap:8px;margin-top:4px;">
-                            <div style="flex:1;">
-                                <label class="wz-label" style="font-size:11px;">Schedule (cron, optional)</label>
-                                <input type="text" class="wz-input wz-wk-schedule" placeholder="0 2 * * *" value="${wk.schedule||''}">
+                        <div class="wz-item-row" style="margin-top:8px;gap:8px;">
+                            <div style="flex:1;min-width:0;">
+                                <label class="wz-label">Schedule (cron)</label>
+                                <input type="text" class="wz-input wz-wk-schedule" placeholder="0 2 * * *  or blank" value="${wk.schedule||''}">
                             </div>
-                            <div style="flex:1;">
-                                <label class="wz-label" style="font-size:11px;">Timeout</label>
+                            <div style="width:110px;flex-shrink:0;">
+                                <label class="wz-label">Timeout</label>
                                 <input type="text" class="wz-input wz-wk-timeout" placeholder="30s" value="${wk.timeout||''}">
                             </div>
                         </div>
-                    </div>`).join('') || '<div class="wz-hint" style="padding:8px;">No workers yet.</div>';
+                    </div>`).join('') || '<div class="wz-hint" style="padding:6px 0;">No workers yet.</div>';
 
                 listEl.querySelectorAll('[data-idx]').forEach(row => {
                     const i = +row.dataset.idx;
@@ -1309,6 +1722,46 @@
                         <label class="wz-switch" onclick="event.stopPropagation()"><input type="checkbox" data-wz-route-field="extras.firewall_enabled"${ex.firewall_enabled?' checked':''}><span class="wz-slider"></span></label>
                     </div>
                 </div>
+                <div class="wz-toggle-card">
+                    <div class="wz-toggle-header" data-action="wz-toggle" data-target="wztHealth_${route.id}">
+                        <div><strong>Health Check</strong><span class="wz-toggle-sub">Active backend probe</span></div>
+                        <label class="wz-switch" onclick="event.stopPropagation()"><input type="checkbox" data-wz-route-field="extras.health_enabled"${ex.health_enabled?' checked':''}><span class="wz-slider"></span></label>
+                    </div>
+                    <div class="wz-toggle-body" id="wztHealth_${route.id}" style="display:none;">
+                        <div class="wz-item-row" style="gap:8px;">
+                            <div style="flex:2;">
+                                <label class="wz-label">Path</label>
+                                <input type="text" data-wz-route-field="extras.health_path" class="wz-input" placeholder="/health" value="${ex.health_path||'/health'}">
+                            </div>
+                            <div style="flex:1;">
+                                <label class="wz-label">Interval</label>
+                                <input type="text" data-wz-route-field="extras.health_interval" class="wz-input" placeholder="10s" value="${ex.health_interval||''}">
+                            </div>
+                            <div style="flex:1;">
+                                <label class="wz-label">Timeout</label>
+                                <input type="text" data-wz-route-field="extras.health_timeout" class="wz-input" placeholder="5s" value="${ex.health_timeout||''}">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="wz-toggle-card">
+                    <div class="wz-toggle-header" data-action="wz-toggle" data-target="wztCB_${route.id}">
+                        <div><strong>Circuit Breaker</strong><span class="wz-toggle-sub">Open after N consecutive failures</span></div>
+                        <label class="wz-switch" onclick="event.stopPropagation()"><input type="checkbox" data-wz-route-field="extras.cb_enabled"${ex.cb_enabled?' checked':''}><span class="wz-slider"></span></label>
+                    </div>
+                    <div class="wz-toggle-body" id="wztCB_${route.id}" style="display:none;">
+                        <div class="wz-item-row" style="gap:8px;">
+                            <div style="flex:1;">
+                                <label class="wz-label">Threshold (failures)</label>
+                                <input type="number" data-wz-route-field="extras.cb_threshold" class="wz-input" placeholder="5" min="1" value="${ex.cb_threshold||5}">
+                            </div>
+                            <div style="flex:1;">
+                                <label class="wz-label">Reset after</label>
+                                <input type="text" data-wz-route-field="extras.cb_duration" class="wz-input" placeholder="30s" value="${ex.cb_duration||''}">
+                            </div>
+                        </div>
+                    </div>
+                </div>
             </div>`;
         }
 
@@ -1361,7 +1814,7 @@
                       style="min-height:260px;" placeholder='{ "domains": ["..."], "tls": { "mode": "auto" }, "routes": [...] }'>${existing}</textarea>`;
         }
 
-        // ── Step 5: Review & Edit ─────────────────────────────────────────────
+        // ── Step 5: Review & Create ───────────────────────────────────────────
         function stepConfirmHTML(data) {
             let previewObj = {};
             try {
@@ -1377,9 +1830,19 @@
             const json = JSON.stringify(previewObj, null, 2);
             saveDraft({ ...data, _previewJson: json });
             return `
-            <p class="wz-section-hint">Review and edit your configuration below. What you see here is exactly what gets saved.</p>
+            <p class="wz-section-hint">Review your configuration before creating. This is the JSON that will be sent to the server. You can edit it here.</p>
             <textarea id="wzConfirmJson" data-wizard-field="confirm_json" class="json-editor" spellcheck="false"
-                      style="min-height:300px;width:100%;box-sizing:border-box;">${json.replace(/</g,'&lt;').replace(/>/g,'&gt;')}</textarea>`;
+                      style="min-height:280px;width:100%;box-sizing:border-box;">${json.replace(/</g,'&lt;').replace(/>/g,'&gt;')}</textarea>`;
+        }
+
+        function _wireReviewTabs(bodyEl) {
+            // No tabs — wizard always uses JSON (clean composition, no comment loss).
+            // HCL is for the edit flow only.
+            // Just keep the hidden field in sync with textarea edits.
+            const jsonTa = bodyEl.querySelector('#wzConfirmJson');
+            jsonTa?.addEventListener('input', () => {
+                // wizard.js collects data-wizard-field values directly, no hidden field needed
+            });
         }
 
         // ── Step definitions ──────────────────────────────────────────────────
@@ -1403,6 +1866,12 @@
                     if (!dom) return 'Domain is required';
                     if (dom.includes('://')) return 'Domain must not include a protocol prefix';
                     if (dom.includes('..'))  return 'Invalid domain';
+                    // Only require cert/key when explicitly using local TLS on a real domain
+                    // Local/dev domains (localhost, .local, IP) auto-collapse TLS section
+                    if (d.tls_mode === 'local' && !_isLocalDomain(dom)) {
+                        if (!(d.tls_cert || '').trim()) return 'Certificate file path is required for local TLS';
+                        if (!(d.tls_key  || '').trim()) return 'Key file path is required for local TLS';
+                    }
                     return true;
                 },
             }]),
@@ -1431,6 +1900,14 @@
                         if (!rs.length) return 'Add at least one route';
                         for (const r of rs) {
                             if (!r.path?.startsWith('/')) return `Route path must start with /`;
+                            // web_root is required when static files are enabled
+                            if (r.engineData?.web_static_on && !(r.engineData?.web_root || '').trim()) {
+                                return `Route "${r.path}": Static Files is enabled but the root directory path is empty. Enter the full server path (e.g. /var/www/html).`;
+                            }
+                            // git URL required when git deploy enabled
+                            if (r.engineData?.git_enabled && !(r.engineData?.git_url || '').trim()) {
+                                return `Route "${r.path}": Git Deploy is enabled but repository URL is empty.`;
+                            }
                         }
                     } catch { return 'Invalid route data'; }
                     return true;
@@ -1441,6 +1918,7 @@
                 label: 'Review & Create',
                 body:  (bodyEl) => {
                     bodyEl.innerHTML = stepConfirmHTML(w.data());
+                    _wireReviewTabs(bodyEl);
                 },
                 final: true,
             },
@@ -1500,18 +1978,35 @@
             // Mark as managed so the delegated wz-toggle handler skips it
             body.dataset.collapseManaged = '1';
 
+            // Open the panel when the section is checked — but unchecking does NOT close it.
+            // The user needs to see (and clear) the fields when they uncheck.
+            // Visual cue: dim the panel when disabled instead of hiding it.
             const panel = collapse.attach(null, body, { open: cb.checked, animation: true, duration: 180 });
-            cb.addEventListener('change', () => { cb.checked ? panel.open() : panel.close(); });
 
-            // Header click toggles via collapse AND syncs checkbox — stop propagation
-            // so the outer delegated handler (which would double-toggle) never fires
+            function _syncEnabled() {
+                body.style.opacity = cb.checked ? '' : '0.45';
+                body.style.pointerEvents = cb.checked ? '' : 'none';
+            }
+            _syncEnabled();
+
+            cb.addEventListener('change', () => {
+                if (cb.checked) panel.open();
+                // Unchecking: keep panel visible but dim it — don't close
+                _syncEnabled();
+            });
+
+            // Header click toggles panel AND syncs checkbox
             header.addEventListener('click', (e) => {
-                // Don't toggle when clicking the switch label itself (that's the checkbox)
                 if (e.target.closest('.wz-switch')) return;
                 e.stopPropagation();
-                cb.checked ? panel.close() : panel.open();
-                cb.checked = !cb.checked;
-                cb.dispatchEvent(new Event('change', { bubbles: false }));
+                const isOpen = body.style.display !== 'none' && body.offsetHeight > 0;
+                if (isOpen) {
+                    panel.close();
+                } else {
+                    panel.open();
+                    // Opening via header also enables the feature
+                    if (!cb.checked) { cb.checked = true; cb.dispatchEvent(new Event('change', { bubbles: false })); }
+                }
             });
         });
     }
@@ -1546,65 +2041,58 @@
         }
     });
 
-    // ── Edit Host modal — HCL / JSON tabs ─────────────────────────────────────
-    let _editHostFormat = 'hcl'; // tracks which format is active
+    // ── Edit Host modal — HCL only ────────────────────────────────────────────
+    // Decision: Edit always uses HCL. Comments are preserved. No tab switching.
+    // The modal HTML has a static "HCL" badge instead of tabs.
 
-    // Initialise format tabs once
-    tabs.render(query('#editHostFormatTabs'), [
-        { key: 'hcl',  label: 'HCL'  },
-        { key: 'json', label: 'JSON' },
-    ], {
-        active:   'hcl',
-        variant:  'pill',
-        onChange: (key) => {
-            _editHostFormat = key;
-            const ta  = query('#editHostJsonTextarea');
-            const btn = query('#saveHostJsonBtn');
-            if (ta)  ta.placeholder = key === 'hcl' ? 'HCL configuration…' : 'JSON configuration…';
-            if (btn) btn.textContent = 'Save Configuration';
-        },
-    });
-
-    // Open via Edit HCL button (hosts.html emits host:open-edit-hcl with raw HCL)
+    // Open via Edit HCL button (hosts.html emits host:open-edit-hcl with raw HCL from server)
     listen('host:open-edit-hcl', ({ domain, hcl }) => {
-        _editHostFormat = 'hcl';
         query('#editHostTitle').innerText          = domain;
         query('#editHostError').style.display      = 'none';
+        query('#editHostError').style.cssText      = '';
         query('#editHostJsonTextarea').value       = hcl;
         query('#saveHostJsonBtn').dataset.hostname = domain;
         modal.open('editHostJsonModal');
     });
 
-    // Open via dashboard right-click → Edit config (JSON path, kept for compatibility)
-    listen('host:open-edit', ({ domain }) => {
-        const config = store.get('lastConfig')?.hosts?.[domain];
-        if (!config) return;
-        _editHostFormat = 'json';
+    // Open via dashboard right-click → Edit config
+    // Also fetch HCL from server to preserve comments
+    listen('host:open-edit', async ({ domain }) => {
+        const { getHostHCL } = await import('../js/api.js');
         query('#editHostTitle').innerText          = domain;
         query('#editHostError').style.display      = 'none';
-        query('#editHostJsonTextarea').value       = JSON.stringify(config, null, 4);
+        query('#editHostError').style.cssText      = '';
+        query('#editHostJsonTextarea').value       = 'Loading…';
         query('#saveHostJsonBtn').dataset.hostname = domain;
         modal.open('editHostJsonModal');
+        const hcl = await getHostHCL(domain);
+        if (hcl) {
+            query('#editHostJsonTextarea').value = hcl;
+        } else {
+            // Fallback: pretty-print the in-memory JSON config
+            const config = store.get('lastConfig')?.hosts?.[domain];
+            query('#editHostJsonTextarea').value = config ? JSON.stringify(config, null, 2) : '';
+            const errEl = query('#editHostError');
+            errEl.innerText = 'ℹ️ Could not load HCL — showing JSON. Save will send as JSON.';
+            errEl.style.cssText = 'color:var(--text-mute);font-size:11px;margin-bottom:8px;background:var(--panel-bg);padding:7px 10px;border-radius:5px;border:1px solid var(--border);display:block;';
+        }
     });
 
-    // Format button — works for both HCL (validate + reformat) and JSON
+    // Format button — always HCL
     on('#formatHostJsonBtn', 'click', () => {
         const el    = query('#editHostJsonTextarea');
         const errEl = query('#editHostError');
+        errEl.style.display = 'none';
         try {
-            if (_editHostFormat === 'hcl') {
-                el.value = formatHCL(el.value);
-            } else {
-                el.value = JSON.stringify(JSON.parse(el.value), null, 4);
-            }
-            errEl.style.display = 'none';
+            el.value = formatHCL(el.value);
         } catch(err) {
             errEl.innerText = 'Format error: ' + err.message;
+            errEl.style.cssText = '';
             errEl.style.display = 'block';
         }
     });
 
-    // Save — sends HCL as text/plain or JSON as application/json
+    // Save — always HCL via PUT
     on('#saveHostJsonBtn', 'click', async (e, btn) => {
         const hostname = btn.dataset.hostname;
         const errEl    = query('#editHostError');
@@ -1613,20 +2101,7 @@
 
         ui.btn.loading(btn, 'Saving…');
         try {
-            let result;
-            if (_editHostFormat === 'hcl') {
-                result = await addHostHCL(ta.value);
-            } else {
-                let parsed;
-                try { parsed = JSON.parse(ta.value); }
-                catch(err) {
-                    ui.btn.reset(btn);
-                    errEl.innerText = 'Invalid JSON: ' + err.message;
-                    errEl.style.display = 'block';
-                    return;
-                }
-                result = await addHost(hostname, parsed);
-            }
+            const result = await updateHostHCL(hostname, ta.value);
             if (result?.error) throw new Error(result.error);
             ui.btn.done(btn, 'Saved ✓');
             setTimeout(() => { modal.closeAll(); ui.btn.reset(btn); }, 800);
@@ -1635,6 +2110,7 @@
         } catch(err) {
             ui.btn.reset(btn);
             errEl.innerText = err.message || 'Save failed';
+            errEl.style.cssText = '';
             errEl.style.display = 'block';
         }
     });

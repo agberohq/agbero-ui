@@ -97,6 +97,13 @@ async function bootstrapApp() {
         loadConfigData();
     });
 
+    // Cleanup emitted from shell.html's layout.onUnmount (must live in layout script, not here)
+    listen('app:layout-unmount', () => {
+        if (_stopPolling) { _stopPolling(); _stopPolling = null; }
+        window._isPolling = false;
+        if (_configPollTimer) { clearInterval(_configPollTimer); _configPollTimer = null; }
+    });
+
     // Any page component can navigate without importing the router directly.
     //   emit('app:navigate', { path: '/hosts' });
     listen('app:navigate', ({ path }) => {
@@ -106,13 +113,6 @@ async function bootstrapApp() {
     LOG('bootstrapApp: router + listeners registered');
 
     LOG('bootstrapApp: applying shell layout');
-    // Register cleanup BEFORE awaiting layout.apply — Oja captures the layout
-    // context synchronously. After the await the context is gone.
-    layout.onUnmount(() => {
-        if (_stopPolling) { _stopPolling(); _stopPolling = null; }
-        window._isPolling = false;
-        if (_configPollTimer) { clearInterval(_configPollTimer); _configPollTimer = null; }
-    });
     await layout.apply('#shell', 'layouts/shell.html');
     LOG('bootstrapApp: layout applied — #loginModal exists=',
         !!document.getElementById('loginModal'));
@@ -139,6 +139,7 @@ async function bootstrapApp() {
     engine.bindToggle('#offlineBanner', 'sys.isOffline', { activeClass: 'active' });
 
     keys({
+        // Ctrl+1-9,0: navigate pages
         'ctrl+1': () => router.navigate('/'),
         'ctrl+2': () => router.navigate('/hosts'),
         'ctrl+3': () => router.navigate('/cluster'),
@@ -148,28 +149,21 @@ async function bootstrapApp() {
         'ctrl+7': () => router.navigate('/config'),
         'ctrl+8': () => router.navigate('/keeper'),
         'ctrl+9': () => router.navigate('/profile'),
+        'ctrl+0': () => router.navigate('/certs'),
+        // Ctrl+K: command palette — quick nav by name
+        'ctrl+k': () => emit('app:command-palette'),
         'escape': () => {
+            // Close command palette first if open
+            const cp = query('#commandPalette');
+            if (cp?.style.display !== 'none' && cp) { emit('app:command-palette-close'); return; }
             const be = query('#backendDrawer');
-            if (be?.classList.contains('active')) { be.classList.remove('active'); return; }
+            if (be?.classList.contains('active')) { modal.closeById('backendDrawer'); return; }
             const rd = query('#routeDrawer');
-            if (rd?.classList.contains('active')) {
-                rd.classList.remove('active');
-                query('#drawerBackdrop')?.classList.remove('active');
-            }
+            if (rd?.classList.contains('active')) { modal.closeById('routeDrawer'); return; }
         },
         'r': () => { const path = router.current(); if (path) router.refresh(); },
         '/': () => query('#hostSearch')?.focus(),
-        '?': () => {
-            make.div({
-                text:  'Ctrl+1-7: Navigate  ·  r: Refresh  ·  /: Search  ·  Esc: Close',
-                style: { position:'fixed', top:'20px', right:'20px', background:'var(--fg)',
-                    color:'var(--bg)', padding:'12px 20px', borderRadius:'8px',
-                    fontSize:'12px', fontFamily:'monospace', zIndex:'2000',
-                    boxShadow:'0 4px 12px rgba(0,0,0,.2)' },
-            }).appendTo(document.body)
-                .update({ fn: async (el) => { setTimeout(() => el.remove(), 4000); } });
-        },
-    });
+    }, { preventDefault: true });
 
     auth.level('protected', () => {
         const active = auth.session.isActive();
@@ -210,6 +204,7 @@ async function bootstrapApp() {
     appGroup.Get('/config',   Out.component('pages/config.html'));
     appGroup.Get('/keeper',   Out.component('pages/keeper.html'));
     appGroup.Get('/profile',  Out.component('pages/profile.html'));
+    appGroup.Get('/certs',    Out.component('pages/certs.html'));
     router.NotFound(Out.html('<div class="page active"><div class="empty-state">Page Not Found</div></div>'));
 
     if (isLoggedIn()) {

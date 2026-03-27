@@ -65,15 +65,15 @@
     </div>
 
     <!-- Notifications / activity feed -->
-    <div class="notif-bar">
+    <div class="notif-bar" id="notifBar">
         <span class="notif-bar-icon">🔔</span>
-        <span class="notif-bar-text">No notifications yet — alerts and system events will appear here</span>
+        <span class="notif-bar-text" id="notifText">No notifications yet</span>
     </div>
 </div>
 
 <script type="module">
     import { component, listen, emit, chart, on, query, queryAll, clickmenu } from '../lib/oja.full.esm.js';
-    import { store } from '../js/store.js';
+    import { store, getCreds } from '../js/store.js';
 
     let mainChart = null;
     let unsub     = null;
@@ -246,9 +246,56 @@
         renderCerts(store.get('certificates') || []);
         renderTopHosts(hosts);
         renderErrorHotspots(hosts);
+        renderNotifications(hosts, store.get('certificates') || []);
 
         // Chart
         refreshChart(payload.history);
+    }
+
+    function renderNotifications(hosts, certs) {
+        const el = query('#notifText');
+        if (!el) return;
+        const items = [];
+
+        // Cert expiry warnings
+        (certs || []).forEach(c => {
+            if (c.daysLeft < 0)  items.push({ icon: '🔴', msg: `Certificate expired: ${c.host}`, sev: 'danger' });
+            else if (c.daysLeft < 7)  items.push({ icon: '🟡', msg: `Certificate expiring in ${c.daysLeft}d: ${c.host}`, sev: 'warning' });
+        });
+
+        // High error rate
+        let tReqs = 0, tErrs = 0;
+        for (const h of Object.values(hosts || {})) {
+            tReqs += h.total_reqs || 0;
+            (h.routes || []).forEach(r => (r.backends || []).forEach(b => tErrs += b.failures || 0));
+        }
+        if (tReqs > 50 && tErrs / tReqs > 0.05) {
+            items.push({ icon: '🔴', msg: `High error rate: ${((tErrs/tReqs)*100).toFixed(1)}% (${tErrs} failures)`, sev: 'danger' });
+        }
+
+        // Dead backends
+        for (const [hostname, h] of Object.entries(hosts || {})) {
+            for (const route of (h.routes || [])) {
+                for (const b of (route.backends || [])) {
+                    if (b.alive === false) {
+                        items.push({ icon: '⚠️', msg: `Dead backend: ${b.url || b.address || '?'} on ${hostname}`, sev: 'warning' });
+                    }
+                }
+            }
+        }
+
+        if (!items.length) {
+            el.textContent = 'No alerts — everything looks healthy';
+            el.parentElement?.style.setProperty('border-color', '');
+            return;
+        }
+
+        // Show most severe first
+        items.sort((a, b) => (a.sev === 'danger' ? -1 : 1));
+        el.innerHTML = items.map(i => `<span style="margin-right:16px;">${i.icon} ${i.msg}</span>`).join('');
+
+        const bar = el.parentElement;
+        if (bar) bar.style.borderColor = items.some(i => i.sev === 'danger') ? 'rgba(255,59,48,0.3)' : 'rgba(245,166,35,0.3)';
     }
 
     function refreshChart(history) {
@@ -270,15 +317,15 @@
 
     // ── Boot ───────────────────────────────────────────────────────────────────
 
-    // Welcome: extract username from JWT user claim
+    // Welcome: extract username from JWT using getCreds() — never raw localStorage
     (function setWelcomeName() {
         const el = query('#welcomeName');
         if (!el) return;
         try {
-            const token = localStorage.getItem('ag_auth_token');
+            const { token } = getCreds();
             if (!token) { el.textContent = 'ADMIN'; return; }
             const payload = JSON.parse(atob(token.split('.')[1]));
-            el.textContent = payload.user || 'ADMIN';
+            el.textContent = (payload.user || 'ADMIN').toUpperCase();
         } catch { el.textContent = 'ADMIN'; }
     })();
 

@@ -1,22 +1,21 @@
 /**
- * js/api.js
+ * js/api.js  —  All API calls for Agbero admin UI.
  *
- * All endpoints updated to correct paths per API spec:
+ * Endpoint reference:
+ *   Unauthenticated (admin root):
+ *     GET  /healthz  /status  /uptime  /config
+ *     POST /login  /logout
+ *     GET  /logs?limit=N
  *
- * Unauthenticated (admin root):
- *   GET  /healthz  /status  /uptime  /config  /config/global
- *   POST /login  /logout
- *   GET  /logs
- *
- * Authenticated (/api/v1 prefix):
- *   hosts      → /api/v1/discovery[/{domain}]
- *   certs      → /api/v1/certs[/{domain}]
- *   keeper     → /api/v1/keeper/unlock|lock|secrets[/{key}]|totp/{user}
- *   totp       → /api/v1/totp/setup  /api/v1/totp/{user}/qr.svg
- *   secrets    → /api/v1/secrets
- *   firewall   → /api/v1/firewall
- *   cluster    → /api/v1/cluster
- *   telemetry  → /api/v1/telemetry/history  /api/v1/telemetry/hosts
+ *   Authenticated (/api/v1 prefix):
+ *     hosts      → /api/v1/discovery[/{domain}]          GET/POST/PUT/DELETE
+ *     certs      → /api/v1/certs[/{domain}]              GET/POST/DELETE
+ *     keeper     → /api/v1/keeper/unlock|lock|secrets|totp
+ *     totp       → /api/v1/totp/setup  /{user}/qr.svg
+ *     secrets    → /api/v1/secrets
+ *     firewall   → /api/v1/firewall
+ *     cluster    → /api/v1/cluster (POST) + /api/v1/route (POST/DELETE)
+ *     telemetry  → /api/v1/telemetry/history  /hosts
  */
 
 import { Api } from '../lib/oja.full.esm.js';
@@ -42,6 +41,7 @@ export function apiSetToken(token)  { getApi().setToken(token); }
 export function apiClearToken()     { getApi().clearAuth(); }
 
 // ── Safe fetch wrapper ────────────────────────────────────────────────────────
+// Returns null on error, never throws. 401s are handled globally by main.js.
 
 async function _safe(fn) {
     try { return await fn(); }
@@ -53,7 +53,7 @@ async function _safe(fn) {
     }
 }
 
-// ── Unauthenticated endpoints (admin root, no /api/v1 prefix) ────────────────
+// ── Unauthenticated endpoints ─────────────────────────────────────────────────
 
 export async function fetchStatus() {
     const base = getHost() || window.location.origin;
@@ -61,6 +61,7 @@ export async function fetchStatus() {
         const res  = await fetch(base + '/status');
         if (!res.ok) return null;
         const data = await res.json();
+        // /status returns auth/totp as string booleans
         return { auth: data.auth === 'true', totp: data.totp === 'true' };
     } catch { return null; }
 }
@@ -90,12 +91,26 @@ export async function login(username, password, totp = '') {
     }
 }
 
+/** POST /logout — revokes the JWT server-side (JTI revocation list). */
+export async function logout() {
+    const base  = getHost() || window.location.origin;
+    const token = getApi()._token;
+    try {
+        await fetch(base + '/logout', {
+            method:  'POST',
+            headers: token ? { 'Authorization': 'Bearer ' + token } : {},
+        });
+    } catch { /* ignore — always clear local credentials */ }
+}
+
 // ── Monitoring (admin root) ───────────────────────────────────────────────────
 
 export async function fetchUptime()  { return _safe(() => getApi().get('/uptime')); }
 export async function fetchConfig()  { return _safe(() => getApi().get('/config')); }
+
+/** GET /logs?limit=N  (server param is 'limit', not 'lines') */
 export async function fetchLogs(lines) {
-    return _safe(() => getApi().get(`/logs?lines=${lines}`));
+    return _safe(() => getApi().get(`/logs?limit=${lines}`));
 }
 
 // ── Host management  /api/v1/discovery ───────────────────────────────────────
@@ -115,15 +130,34 @@ export async function checkHostExists(domain) {
     } catch { return false; }
 }
 
+/** POST /api/v1/discovery — create new host (JSON). */
 export async function addHost(domain, config) {
     return _safe(() => getApi().post('/api/v1/discovery', { domain, config }));
 }
 
+/** POST /api/v1/discovery — create new host (HCL text/plain). */
 export async function addHostHCL(hclText) {
     return _safe(() => getApi().post('/api/v1/discovery', hclText, {
         raw:     true,
         headers: { 'Content-Type': 'text/plain; charset=utf-8' },
     }));
+}
+
+/** PUT /api/v1/discovery/{domain} — update existing host (JSON). */
+export async function updateHost(domain, config) {
+    return _safe(() => getApi().put(
+        `/api/v1/discovery/${encodeURIComponent(domain)}`,
+        { domain, config }
+    ));
+}
+
+/** PUT /api/v1/discovery/{domain} — update existing host (HCL text/plain). */
+export async function updateHostHCL(domain, hclText) {
+    return _safe(() => getApi().put(
+        `/api/v1/discovery/${encodeURIComponent(domain)}`,
+        hclText,
+        { raw: true, headers: { 'Content-Type': 'text/plain; charset=utf-8' } }
+    ));
 }
 
 export async function getHostHCL(domain) {
@@ -177,10 +211,16 @@ export async function deleteFirewallRule(ip) {
     ));
 }
 
-// ── Cluster  /api/v1/cluster ──────────────────────────────────────────────────
+// ── Cluster  /api/v1/cluster + /api/v1/route ─────────────────────────────────
 
 export async function broadcastClusterRoute(body) {
     return _safe(() => getApi().post('/api/v1/cluster', body));
+}
+
+export async function deleteClusterRoute(host, path) {
+    return _safe(() => getApi().delete(
+        `/api/v1/cluster?host=${encodeURIComponent(host)}&path=${encodeURIComponent(path || '/')}`
+    ));
 }
 
 // ── Telemetry  /api/v1/telemetry ─────────────────────────────────────────────
