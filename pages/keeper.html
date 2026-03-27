@@ -1,0 +1,271 @@
+<div class="page active">
+
+    <!-- Page header — shown in both locked and unlocked states -->
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:24px;">
+        <div>
+            <h2 style="margin:0;font-size:17px;font-weight:400;">Keeper</h2>
+            <p style="margin:3px 0 0;font-size:12px;color:var(--text-mute);">Encrypted secret store. Reference secrets in config as <code>ss://key-name</code></p>
+        </div>
+        <div style="display:flex;gap:8px;" id="keeperActions">
+            <button class="btn small" id="keeperLockBtn" style="display:none;color:var(--danger);border-color:var(--danger);">🔒 Lock</button>
+            <button class="btn primary small" id="keeperAddBtn" style="display:none;">+ Secret</button>
+        </div>
+    </div>
+
+    <!-- Locked state -->
+    <div id="keeperLockedPanel">
+        <div style="max-width:360px;margin:80px auto;text-align:center;">
+            <div style="font-size:44px;margin-bottom:14px;line-height:1;">🔐</div>
+            <p style="color:var(--text-mute);font-size:13px;margin:0 0 20px;line-height:1.6;">Enter your passphrase to unlock.</p>
+            <div style="display:flex;gap:8px;align-items:stretch;">
+                <input type="password" id="keeperPassphrase" class="search-input"
+                       placeholder="Passphrase" style="flex:1;font-size:13px;"
+                       autocomplete="current-password">
+                <button class="btn primary" id="keeperUnlockBtn" style="white-space:nowrap;">Unlock</button>
+            </div>
+            <div id="keeperUnlockError" style="color:var(--danger);font-size:11px;margin-top:8px;display:none;text-align:left;"></div>
+        </div>
+    </div>
+
+    <!-- Unlocked state -->
+    <div id="keeperUnlockedPanel" style="display:none;">
+
+        <!-- Add secret inline form -->
+        <div id="keeperAddForm" style="display:none;background:var(--panel-bg);border:1px solid var(--border);border-radius:8px;padding:16px;margin-bottom:16px;">
+            <div style="font-size:13px;font-weight:500;margin-bottom:12px;">New Secret</div>
+            <div style="display:grid;grid-template-columns:1fr 2fr;gap:8px;margin-bottom:8px;">
+                <input type="text" id="keeperNewKey" class="search-input"
+                       placeholder="key-name" autocomplete="off" spellcheck="false"
+                       style="font-size:13px;">
+                <input type="text" id="keeperNewValue" class="search-input"
+                       placeholder="value, env.VAR, or b64.…" autocomplete="off"
+                       style="font-size:13px;">
+            </div>
+            <div style="display:flex;justify-content:space-between;align-items:center;">
+                <span style="font-size:11px;color:var(--text-mute);">Keys: letters, digits, hyphens, slashes. Values can use <code>env.VAR</code> or <code>b64.XXX</code>.</span>
+                <div style="display:flex;gap:6px;">
+                    <button class="btn small" id="keeperCancelAddBtn">Cancel</button>
+                    <button class="btn primary small" id="keeperSaveBtn">Save Secret</button>
+                </div>
+            </div>
+            <div id="keeperAddError" style="color:var(--danger);font-size:11px;margin-top:6px;display:none;"></div>
+        </div>
+
+        <!-- Keys list -->
+        <div id="keeperList">
+            <div class="loading-rows">
+                <div class="loading-row"></div>
+                <div class="loading-row"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script type="module">
+    import { component, on, ui, notify, query } from '../lib/oja.full.esm.js';
+    import { keeperUnlock, keeperLock, keeperList, keeperSet, keeperDelete } from '../js/api.js';
+
+    let _unlocked = false;
+
+    // ── State ─────────────────────────────────────────────────────────────────
+
+    function showLocked() {
+        _unlocked = false;
+        query('#keeperLockedPanel').style.display   = '';
+        query('#keeperUnlockedPanel').style.display = 'none';
+        query('#keeperLockBtn').style.display       = 'none';
+        query('#keeperAddBtn').style.display        = 'none';
+        query('#keeperPassphrase').value            = '';
+        query('#keeperAddForm').style.display       = 'none';
+    }
+
+    function showUnlocked() {
+        _unlocked = true;
+        query('#keeperLockedPanel').style.display   = 'none';
+        query('#keeperUnlockedPanel').style.display = '';
+        query('#keeperLockBtn').style.display       = '';
+        query('#keeperAddBtn').style.display        = '';
+        loadKeys();
+    }
+
+    // ── Render ────────────────────────────────────────────────────────────────
+
+    function renderKeys(keys) {
+        const el = query('#keeperList');
+        if (!el) return;
+
+        if (!keys?.length) {
+            el.innerHTML = `<div class="empty-state">
+                <span>🗝️ No secrets yet</span>
+                <span>Click <strong>+ Secret</strong> to add your first secret</span>
+            </div>`;
+            return;
+        }
+
+        el.innerHTML = `<div class="host-row" style="overflow:visible;">
+            <table style="width:100%;border-collapse:collapse;">
+                <thead>
+                    <tr style="border-bottom:1px solid var(--border);">
+                        <th style="text-align:left;padding:9px 16px;font-size:11px;color:var(--text-mute);font-weight:500;text-transform:uppercase;letter-spacing:.5px;width:35%;">Key</th>
+                        <th style="text-align:left;padding:9px 16px;font-size:11px;color:var(--text-mute);font-weight:500;text-transform:uppercase;letter-spacing:.5px;">Config Reference</th>
+                        <th style="width:70px;padding:9px 16px;"></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${keys.map(k => `
+                    <tr style="border-bottom:1px solid var(--border);">
+                        <td style="padding:10px 16px;font-family:var(--font-mono);font-size:13px;color:var(--fg);">${k}</td>
+                        <td style="padding:10px 16px;">
+                            <div style="display:flex;align-items:center;gap:8px;">
+                                <code style="font-size:11px;background:var(--hover-bg);padding:3px 7px;border-radius:3px;border:1px solid var(--border);color:var(--accent);">ss://${k}</code>
+                                <button class="btn-link" data-action="copy-ref" data-ref="ss://${k}" style="font-size:11px;">copy</button>
+                            </div>
+                        </td>
+                        <td style="padding:10px 16px;text-align:right;">
+                            <button class="btn small" data-action="delete-key" data-key="${k}"
+                                    style="font-size:10px;padding:2px 7px;color:var(--danger);border-color:var(--danger);opacity:0.7;">
+                                Delete
+                            </button>
+                        </td>
+                    </tr>`).join('')}
+                </tbody>
+            </table>
+        </div>`;
+    }
+
+    async function loadKeys() {
+        const el = query('#keeperList');
+        if (el) el.innerHTML = '<div class="loading-rows"><div class="loading-row"></div><div class="loading-row"></div></div>';
+        const data = await keeperList();
+        if (data?.keys !== undefined) {
+            renderKeys(data.keys);
+        } else {
+            showLocked();
+        }
+    }
+
+    // ── Boot ──────────────────────────────────────────────────────────────────
+
+    (async () => {
+        const data = await keeperList();
+        if (data?.keys !== undefined) showUnlocked();
+        else showLocked();
+    })();
+
+    // ── Unlock ────────────────────────────────────────────────────────────────
+
+    async function doUnlock() {
+        const pass  = query('#keeperPassphrase').value.trim();
+        const errEl = query('#keeperUnlockError');
+        const btn   = query('#keeperUnlockBtn');
+        if (!pass) return;
+        errEl.style.display = 'none';
+        ui.btn.loading(btn, 'Unlocking…');
+        const res = await keeperUnlock(pass);
+        ui.btn.reset(btn);
+        if (res?.status === 'unlocked') {
+            showUnlocked();
+        } else {
+            errEl.textContent   = res?.error || 'Invalid passphrase';
+            errEl.style.display = 'block';
+        }
+    }
+
+    on('#keeperUnlockBtn', 'click', doUnlock);
+    on('#keeperPassphrase', 'keydown', (e) => { if (e.key === 'Enter') doUnlock(); });
+
+    // ── Lock ──────────────────────────────────────────────────────────────────
+
+    on('#keeperLockBtn', 'click', async (e, btn) => {
+        ui.btn.loading(btn, 'Locking…');
+        await keeperLock();
+        ui.btn.reset(btn);
+        showLocked();
+        notify.show('Keeper locked', 'success');
+    });
+
+    // ── Add secret ────────────────────────────────────────────────────────────
+
+    on('#keeperAddBtn', 'click', () => {
+        query('#keeperAddForm').style.display = '';
+        query('#keeperNewKey').focus();
+    });
+
+    on('#keeperCancelAddBtn', 'click', () => {
+        query('#keeperAddForm').style.display = 'none';
+        query('#keeperNewKey').value = '';
+        query('#keeperNewValue').value = '';
+        query('#keeperAddError').style.display = 'none';
+    });
+
+    on('#keeperSaveBtn', 'click', async (e, btn) => {
+        const key   = (query('#keeperNewKey').value   || '').trim();
+        const value = (query('#keeperNewValue').value || '').trim();
+        const errEl = query('#keeperAddError');
+        errEl.style.display = 'none';
+        if (!key)         { errEl.textContent = 'Key is required';          errEl.style.display = 'block'; return; }
+        if (!value)       { errEl.textContent = 'Value is required';        errEl.style.display = 'block'; return; }
+        if (/\s/.test(key)) { errEl.textContent = 'Key cannot contain spaces'; errEl.style.display = 'block'; return; }
+
+        ui.btn.loading(btn, 'Saving…');
+        const res = await keeperSet(key, value);
+        ui.btn.reset(btn);
+        if (res?.key) {
+            notify.show(`"${key}" saved`, 'success');
+            query('#keeperAddForm').style.display = 'none';
+            query('#keeperNewKey').value  = '';
+            query('#keeperNewValue').value = '';
+            loadKeys();
+        } else {
+            errEl.textContent   = res?.error || 'Save failed';
+            errEl.style.display = 'block';
+        }
+    });
+
+    // ── Copy ref ──────────────────────────────────────────────────────────────
+
+    on('[data-action="copy-ref"]', 'click', (e, btn) => {
+        e.stopPropagation();
+        navigator.clipboard?.writeText(btn.dataset.ref)
+            .then(() => notify.show('Copied', 'success'))
+            .catch(() => {});
+    });
+
+    // ── Delete key ────────────────────────────────────────────────────────────
+
+    on('[data-action="delete-key"]', 'click', async (e, btn) => {
+        e.stopPropagation();
+        const key = btn.dataset.key;
+        // Use Oja's strict delete instead of native confirm
+        const doDelete = async () => {
+            ui.btn.loading(btn, '…');
+            const res = await keeperDelete(key);
+            if (res?.deleted) {
+                notify.show(`"${key}" deleted`, 'success');
+                loadKeys();
+            } else {
+                ui.btn.reset(btn);
+                notify.show(res?.error || 'Delete failed', 'error');
+            }
+        };
+        // Simple inline confirm — just ask once
+        if (btn.dataset.confirm === '1') {
+            doDelete();
+        } else {
+            btn.dataset.confirm  = '1';
+            btn.textContent      = 'Sure?';
+            btn.style.background = 'var(--danger)';
+            btn.style.color      = '#fff';
+            setTimeout(() => {
+                if (btn.dataset.confirm === '1') {
+                    btn.dataset.confirm  = '';
+                    btn.textContent      = 'Delete';
+                    btn.style.background = '';
+                    btn.style.color      = 'var(--danger)';
+                }
+            }, 2500);
+        }
+    });
+
+    component.onUnmount(() => {});
+</script>

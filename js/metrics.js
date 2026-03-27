@@ -1,7 +1,7 @@
 import { emit } from '../lib/oja.full.esm.js';
 import { fetchUptime } from './api.js';
 
-const METRICS_INTERVAL_MS  = 2000;
+const METRICS_INTERVAL_MS  = 3000; // 3s — industry standard for admin dashboards
 const MILLISECONDS_IN_SEC  = 1000;
 const MAX_HISTORY_POINTS   = 60;
 

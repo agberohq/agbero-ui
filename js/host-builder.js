@@ -15,13 +15,22 @@ export function buildHostConfig(data) {
     const tlsMode = data.tls_mode || 'auto';
 
     // ── TLS block ─────────────────────────────────────────────────────────────
-    const tls = { mode: tlsMode };
-    if (tlsMode === 'local') {
-        tls.local = {
-            enabled:   'on',
-            cert_file: (data.tls_cert || '').trim(),
-            key_file:  (data.tls_key  || '').trim(),
-        };
+    // Local/dev domains don't get a TLS block — agbero infers HTTP-only
+    const isLocalDomain = (d) => {
+        const h = (d||'').trim().toLowerCase();
+        return !h || /^\d+\.\d+\.\d+\.\d+$/.test(h) ||
+            ['localhost','.localhost','.local','.internal','.test','.example'].some(s => h === s.replace('.','') || h.endsWith(s));
+    };
+    let tls = null;
+    if (!isLocalDomain(domain) && tlsMode && tlsMode !== '') {
+        tls = { mode: tlsMode };
+        if (tlsMode === 'local') {
+            tls.local = {
+                enabled:   'on',
+                cert_file: (data.tls_cert || '').trim(),
+                key_file:  (data.tls_key  || '').trim(),
+            };
+        }
     }
 
     // ── Routes ────────────────────────────────────────────────────────────────
@@ -37,7 +46,8 @@ export function buildHostConfig(data) {
     }
 
     // ── Host root ─────────────────────────────────────────────────────────────
-    const host = { domains: [domain], tls, routes };
+    const host = { domains: [domain], routes };
+    if (tls) host.tls = tls;
 
     if (data.bind && data.bind.trim()) {
         host.bind = [data.bind.trim().replace(/^:/, '')];
@@ -112,8 +122,19 @@ function buildWebBlock(data) {
         }
     }
 
+    // Index files (comma-separated string from wizard)
+    if (data.web_index) {
+        const idx = data.web_index.split(',').map(s => s.trim()).filter(Boolean);
+        if (idx.length) web.index = idx;
+    }
+
+    // Markdown
     if (data.markdown_enabled) {
         web.markdown = { enabled: 'on' };
+        if (data.markdown_view === 'browse') web.markdown.view = 'browse';
+        if (data.markdown_toc)       web.markdown.toc       = 'on';
+        if (data.markdown_unsafe)    web.markdown.unsafe    = 'on';
+        if (data.markdown_highlight) web.markdown.highlight = { enabled: 'on' };
     }
 
     return web;

@@ -1,8 +1,12 @@
 <div class="page active">
     <div class="flex-right">
-        <input type="text" id="hostSearch" class="search-input" placeholder="Search hosts, paths, or backends..." autocomplete="off">
+        <div style="position:relative;flex:1;max-width:340px;">
+            <input type="text" id="hostSearch" class="search-input" placeholder="Search hosts, paths, or backends…" autocomplete="off" style="width:100%;padding-right:28px;">
+            <button id="hostSearchClear" title="Clear search"
+                    style="position:absolute;right:6px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:var(--text-mute);font-size:14px;padding:0;display:none;">✕</button>
+        </div>
         <button class="btn primary small" id="addHostBtn">+ Host</button>
-        <button class="btn" id="refreshHostsBtn">Refresh</button>
+        <button class="btn small" id="refreshHostsBtn">⟳</button>
     </div>
     <div id="hostsContainer"></div>
     <div id="hostsPager"></div>
@@ -11,7 +15,7 @@
 <script type="module">
     import { component, on, emit, listen, modal, ui, clipboard, notify, query, queryAll, pagination, Search } from '../lib/oja.full.esm.js';
     import { store } from '../js/store.js';
-    import { fetchUptime, fmtNum, addHost, deleteHost } from '../js/api.js';
+    import { fetchUptime, fmtNum, addHost, addHostHCL, getHostHCL, deleteHost } from '../js/api.js';
 
     // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -66,7 +70,11 @@
     function routeBadges(r) {
         const t = [];
         if (r.web) {
-            if (r.web.root)                     t.push('<span class="badge">STATIC</span>');
+            if (r.web.root) {
+                if (r.web.markdown?.view === 'browse') t.push('<span class="badge info">BROWSE</span>');
+                else if (isActive(r.web.markdown?.enabled)) t.push('<span class="badge">MD</span>');
+                else t.push('<span class="badge">STATIC</span>');
+            }
             if (r.web.listing)                  t.push('<span class="badge">LISTING</span>');
             if (isActive(r.web.git?.enabled))   t.push('<span class="badge info">GIT</span>');
             if (isActive(r.web.php?.enabled))   t.push('<span class="badge" style="background:#6a73a6;color:#fff;border-color:#6a73a6">PHP</span>');
@@ -76,6 +84,15 @@
             const rc = (r.serverless.rests   || []).length;
             if (wc) t.push(`<span class="badge warn">WORKER (${wc})</span>`);
             if (rc) t.push(`<span class="badge info">REST (${rc})</span>`);
+        }
+        // Proxy badge — show when backends are configured
+        const beServers = r.backends?.servers || [];
+        if (isActive(r.backends?.enabled) && beServers.length > 0) {
+            const strategy = r.backends.strategy || 'round_robin';
+            const stratLabel = strategy.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+            if (beServers.length > 1) {
+                t.push(`<span class="badge info">LB: ${stratLabel} (${beServers.length})</span>`);
+            }
         }
         if (isActive(r.cache?.enabled))               t.push('<span class="badge success">CACHE</span>');
         if (isActive(r.wasm?.enabled))                t.push('<span class="badge transform">WASM</span>');
@@ -127,8 +144,8 @@
         // Edit JSON hidden for protected hosts — config is managed by the server
         const editBtn = isProtected
             ? ''
-            : `<button class="btn small" data-action="edit-json" data-hostname="${hostname}"
-                       style="font-size:10px;padding:2px 7px;">Edit JSON</button>`;
+            : `<button class="btn small" data-action="edit-hcl" data-hostname="${hostname}"
+                       style="font-size:10px;padding:2px 7px;">Edit HCL</button>`;
 
         // Routes
         const statRoutes = hStats.routes || [];
@@ -156,7 +173,6 @@
                     <span class="badge ${protoClass}">${proto}</span>
                     <span class="route-path">${path}</span>
                     ${routeBadges(cfgRoute)}
-                    <span class="badge info" style="margin-left:auto;font-size:9px;">DETAILS →</span>
                 </div>
                 ${backendsHtml}
             </div>`;
@@ -170,7 +186,6 @@
                 <div class="route-header">
                     <span class="badge info">TCP</span>
                     <span class="route-path">${proxy.name || proxy.path || '*'}</span>
-                    <span class="badge info" style="margin-left:auto;font-size:9px;">DETAILS →</span>
                 </div>
             </div>`;
         });
@@ -179,9 +194,10 @@
         <div class="host-row" data-hostname="${hostname}">
             <div class="host-header" data-hostname="${hostname}">
                 <div>
-                    <div class="host-name">
+                    <div class="host-name" style="cursor:pointer;" data-action="open-host-route" data-hostname="${hostname}">
                         ${hostname}
                         <span class="badge ${tlsClass}" title="${tlsTitle}">${tlsText}</span>
+                        ${isProtected ? '<span class="badge" style="background:var(--hover-bg);color:var(--text-mute);border:1px solid var(--border);" title="Protected — managed by server">🔒</span>' : ''}
                         ${hStats.total_reqs ? `<span class="badge" style="background:var(--hover-bg);color:var(--text-mute);border:1px solid var(--border);">${fmtNum(hStats.total_reqs)} reqs</span>` : ''}
                     </div>
                     ${cfgHost.domains?.length > 1 ? `<div class="host-meta">${cfgHost.domains.join(', ')}</div>` : ''}
@@ -385,12 +401,26 @@
     let searchTimeout;
     on('#hostSearch', 'input', (e, el) => {
         clearTimeout(searchTimeout);
+        const clearBtn = query('#hostSearchClear');
+        if (clearBtn) clearBtn.style.display = el.value ? '' : 'none';
         searchTimeout = setTimeout(() => {
             const term = el.value.trim();
             store.set('searchTerm', term);
             syncList();
         }, 150);
     });
+
+    on('#hostSearchClear', 'click', () => {
+        const inp = query('#hostSearch');
+        if (inp) { inp.value = ''; inp.focus(); }
+        const clearBtn = query('#hostSearchClear');
+        if (clearBtn) clearBtn.style.display = 'none';
+        store.set('searchTerm', '');
+        syncList();
+    });
+
+    // Show clear button if search already has a value on mount
+    if (savedTerm && query('#hostSearchClear')) query('#hostSearchClear').style.display = '';
 
     on('#addHostBtn',      'click', () => {
         emit('host:open-add-wizard');
@@ -400,6 +430,23 @@
 
     on('[data-action="open-route"]', 'click', (e, btn) => {
         emit('drawer:open-route', { host: btn.dataset.host, idx: parseInt(btn.dataset.idx), type: btn.dataset.type });
+    });
+
+    // Click on host name → open drawer for first route
+    on('[data-action="open-host-route"]', 'click', (e, el) => {
+        e.stopPropagation();
+        emit('drawer:open-route', { host: el.dataset.hostname, idx: 0, type: 'route' });
+    });
+
+    // Edit HCL — fetch raw HCL from server and open modal
+    on('[data-action="edit-hcl"]', 'click', async (e, btn) => {
+        e.stopPropagation();
+        const hostname = btn.dataset.hostname;
+        ui.btn.loading(btn, '…');
+        const hcl = await getHostHCL(hostname);
+        ui.btn.reset(btn);
+        if (!hcl) { notify.show('Could not load HCL — try again', 'error'); return; }
+        emit('host:open-edit-hcl', { domain: hostname, hcl });
     });
 
     on('[data-action="open-perf"]', 'click', (e, el) => {

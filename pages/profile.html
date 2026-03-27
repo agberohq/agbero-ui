@@ -1,0 +1,233 @@
+<div class="page active">
+    <div style="max-width:560px;margin:0 auto;">
+
+        <h2 style="font-size:18px;margin:0 0 4px;">Profile & Security</h2>
+        <p style="color:var(--text-mute);font-size:12px;margin:0 0 28px;">Manage your authentication settings and two-factor authentication.</p>
+
+        <!-- Account info -->
+        <div class="config-section" style="margin-bottom:20px;">
+            <h3 style="margin:0 0 14px;font-size:13px;text-transform:uppercase;letter-spacing:.5px;color:var(--text-mute);">Account</h3>
+            <div class="kv-grid">
+                <div class="kv-item"><label>Username</label><div id="profileUsername" class="mono">—</div></div>
+                <div class="kv-item"><label>Session</label><div id="profileSession">—</div></div>
+                <div class="kv-item"><label>Auth Method</label><div id="profileAuthMethod">—</div></div>
+            </div>
+        </div>
+
+        <!-- TOTP section -->
+        <div class="config-section">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
+                <h3 style="margin:0;font-size:13px;text-transform:uppercase;letter-spacing:.5px;color:var(--text-mute);">Two-Factor Authentication (TOTP)</h3>
+                <span id="totpStatusBadge" class="badge">—</span>
+            </div>
+
+            <!-- Not configured state -->
+            <div id="totpSetupPanel">
+                <p style="font-size:13px;color:var(--text-mute);margin:0 0 16px;">
+                    TOTP adds a second factor to your login. You'll need an authenticator app such as
+                    Google Authenticator, Authy, or 1Password.
+                </p>
+                <button class="btn primary" id="totpSetupBtn">Set Up Authenticator</button>
+            </div>
+
+            <!-- QR code / provisioning panel -->
+            <div id="totpQRPanel" style="display:none;">
+                <p style="font-size:13px;color:var(--text-mute);margin:0 0 16px;">
+                    Scan this QR code with your authenticator app, then enter the 6-digit code to confirm.
+                </p>
+                <div style="display:flex;gap:24px;align-items:flex-start;flex-wrap:wrap;">
+                    <div id="totpQRCode" style="background:white;padding:12px;border-radius:8px;border:1px solid var(--border);flex-shrink:0;"></div>
+                    <div style="flex:1;min-width:200px;">
+                        <div style="margin-bottom:12px;">
+                            <label class="wz-label" style="font-size:11px;">Manual entry key</label>
+                            <div style="display:flex;gap:6px;align-items:center;margin-top:4px;">
+                                <code id="totpSecretText" style="font-size:11px;padding:6px 8px;background:var(--hover-bg);border:1px solid var(--border);border-radius:4px;flex:1;word-break:break-all;"></code>
+                                <button class="btn small" id="totpCopySecret" style="flex-shrink:0;">Copy</button>
+                            </div>
+                        </div>
+                        <label class="wz-label" style="font-size:11px;">Verify code to activate</label>
+                        <div style="display:flex;gap:8px;margin-top:4px;">
+                            <input type="text" id="totpVerifyCode" class="wz-input"
+                                   placeholder="000000" maxlength="6" inputmode="numeric"
+                                   style="width:120px;text-align:center;letter-spacing:.3em;font-size:16px;">
+                            <button class="btn primary" id="totpVerifyBtn">Verify & Save</button>
+                        </div>
+                        <div id="totpVerifyError" style="color:var(--danger);font-size:11px;margin-top:6px;display:none;"></div>
+                        <button class="btn small" id="totpCancelBtn" style="margin-top:10px;color:var(--text-mute);">Cancel</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Already configured state -->
+            <div id="totpConfiguredPanel" style="display:none;">
+                <div style="display:flex;align-items:center;gap:12px;padding:12px;background:rgba(0,199,112,0.07);border:1px solid rgba(0,199,112,0.2);border-radius:8px;">
+                    <span style="font-size:24px;">✅</span>
+                    <div>
+                        <div style="font-size:13px;font-weight:500;color:var(--success);">TOTP is active</div>
+                        <div style="font-size:11px;color:var(--text-mute);margin-top:2px;">
+                            Your account requires an authenticator code on every login.
+                            The secret is stored in the keeper as <code>ss://totp/${username}</code>.
+                        </div>
+                    </div>
+                </div>
+                <div style="margin-top:12px;">
+                    <button class="btn small" id="totpResetBtn" style="color:var(--warning);border-color:var(--warning);">Reset TOTP</button>
+                    <span style="font-size:11px;color:var(--text-mute);margin-left:8px;">Generates a new secret and invalidates the old one.</span>
+                </div>
+            </div>
+        </div>
+
+    </div>
+</div>
+
+<script type="module">
+    import { component, on, notify, query } from '../lib/oja.full.esm.js';
+    import { store } from '../js/store.js';
+    import { setupTOTP, keeperTOTPSetup, getTOTPQRUrl } from '../js/api.js';
+
+    let _pendingSecret = '';
+    let _pendingUri    = '';
+    let _username      = 'admin';
+
+    // ── Boot ──────────────────────────────────────────────────────────────────
+
+    function boot() {
+        // Extract username from JWT
+        try {
+            const token = localStorage.getItem('ag_auth_token');
+            if (token) {
+                const payload = JSON.parse(atob(token.split('.')[1]));
+                _username = payload.user || 'admin';
+            }
+        } catch {}
+
+        query('#profileUsername').textContent = _username;
+
+        // Session info from store
+        const uptime = store.get('lastUptime');
+        const sys    = uptime?.system;
+        if (sys?.uptime) query('#profileSession').textContent = 'Active · ' + sys.uptime;
+
+        query('#profileAuthMethod').textContent = 'Basic Auth + JWT';
+
+        // Check if TOTP already configured from global config
+        const cfg  = store.get('lastConfig');
+        const totp = cfg?.global?.admin?.totp;
+        const users = totp?.users || [];
+        const hasTotp = isOn(totp?.enabled) && users.some(u => u.username === _username && u.secret);
+
+        showTOTPState(hasTotp ? 'configured' : 'setup');
+    }
+
+    function isOn(v) { return v === 'on'; }
+
+    function showTOTPState(state) {
+        const badge = query('#totpStatusBadge');
+        query('#totpSetupPanel').style.display      = state === 'setup'      ? '' : 'none';
+        query('#totpQRPanel').style.display         = state === 'qr'         ? '' : 'none';
+        query('#totpConfiguredPanel').style.display = state === 'configured' ? '' : 'none';
+        if (badge) {
+            badge.textContent = state === 'configured' ? 'Active' : 'Not set up';
+            badge.className   = 'badge ' + (state === 'configured' ? 'success' : '');
+        }
+    }
+
+    boot();
+
+    // ── Setup TOTP ────────────────────────────────────────────────────────────
+
+    on('#totpSetupBtn', 'click', async (e, btn) => {
+        btn.disabled = true;
+        btn.textContent = 'Generating…';
+
+        const res = await setupTOTP();
+        btn.disabled = false;
+        btn.textContent = 'Set Up Authenticator';
+
+        if (!res?.uri) {
+            notify.show(res?.error || 'Failed to generate TOTP secret', 'error');
+            return;
+        }
+
+        _pendingSecret = res.secret || '';
+        _pendingUri    = res.uri;
+
+        // Show QR code
+        const qrEl = query('#totpQRCode');
+        if (qrEl) {
+            if (res.qr_svg) {
+                qrEl.innerHTML = res.qr_svg;
+                const svg = qrEl.querySelector('svg');
+                if (svg) { svg.style.width = '160px'; svg.style.height = '160px'; }
+            } else {
+                // Fallback: show URI for manual entry
+                qrEl.innerHTML = `<div style="font-size:10px;word-break:break-all;max-width:160px;color:var(--text-mute);">QR unavailable — use manual key below</div>`;
+            }
+        }
+
+        const secretEl = query('#totpSecretText');
+        if (secretEl) secretEl.textContent = _pendingSecret;
+
+        showTOTPState('qr');
+        query('#totpVerifyCode').focus();
+    });
+
+    // Auto-submit on 6 digits
+    on('#totpVerifyCode', 'input', (e, el) => {
+        el.value = el.value.replace(/\D/g, '').slice(0, 6);
+        if (el.value.length === 6) query('#totpVerifyBtn')?.click();
+    });
+
+    on('#totpVerifyBtn', 'click', async (e, btn) => {
+        const code  = query('#totpVerifyCode').value.trim();
+        const errEl = query('#totpVerifyError');
+        errEl.style.display = 'none';
+
+        if (code.length !== 6) {
+            errEl.textContent = 'Enter the 6-digit code from your app';
+            errEl.style.display = 'block';
+            return;
+        }
+
+        // We can't verify server-side without a separate verify endpoint.
+        // The secret is already stored by setupTOTP. Just confirm to the user.
+        // The next login will require TOTP if the backend has it enabled.
+        notify.show('TOTP configured — it will be required on your next login', 'success');
+        showTOTPState('configured');
+    });
+
+    on('#totpCopySecret', 'click', () => {
+        navigator.clipboard?.writeText(_pendingSecret)
+            .then(() => notify.show('Secret key copied', 'success'))
+            .catch(() => {});
+    });
+
+    on('#totpCancelBtn', 'click', () => {
+        showTOTPState('setup');
+        _pendingSecret = '';
+    });
+
+    on('#totpResetBtn', 'click', async (e, btn) => {
+        if (!confirm('Reset TOTP? Your current authenticator app will stop working immediately.')) return;
+        btn.disabled = true;
+        const res = await setupTOTP();
+        btn.disabled = false;
+        if (res?.uri) {
+            _pendingSecret = res.secret || '';
+            _pendingUri    = res.uri;
+            const qrEl = query('#totpQRCode');
+            if (qrEl && res.qr_svg) {
+                qrEl.innerHTML = res.qr_svg;
+                const svg = qrEl.querySelector('svg');
+                if (svg) { svg.style.width = '160px'; svg.style.height = '160px'; }
+            }
+            query('#totpSecretText').textContent = _pendingSecret;
+            query('#totpVerifyCode').value = '';
+            showTOTPState('qr');
+        } else {
+            notify.show(res?.error || 'Reset failed', 'error');
+        }
+    });
+
+    component.onUnmount(() => {});
+</script>

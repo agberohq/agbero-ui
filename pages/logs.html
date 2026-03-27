@@ -72,7 +72,7 @@
 
 <script type="module">
     import { component, on, ui, query, queryAll } from '../lib/oja.full.esm.js';
-    import { store, getCreds } from '../js/store.js';
+    import { store } from '../js/store.js';
     import { fetchLogs } from '../js/api.js';
 
     // SVGs for pause ⏸ and resume ▶ — swapped on toggle
@@ -165,7 +165,7 @@
     async function fetchAndRender() {
         if (paused) return;
         const lines = query('#logsTailSelect')?.value || '100';
-        const data  = await fetchLogs(getCreds(), lines);
+        const data  = await fetchLogs(lines);
         if (data && Array.isArray(data)) {
             logs = [...data].reverse();
             renderLogs();
@@ -179,7 +179,7 @@
         const lines = query('#logsTailSelect')?.value || '100';
         ui.btn.loading(btn);
 
-        const data = await fetchLogs(getCreds(), lines);
+        const data = await fetchLogs(lines);
         if (!data || !Array.isArray(data)) { ui.btn.reset(btn); return; }
 
         const out = data.map(l => {

@@ -8,9 +8,10 @@
         <a href="#/firewall" class="nav-link" data-page="/firewall">firewall</a>
         <a href="#/logs" class="nav-link" data-page="/logs">logs</a>
         <a href="#/config" class="nav-link" data-page="/config">config</a>
-
+        <a href="#/keeper" class="nav-link" data-page="/keeper">keeper</a>
         <button id="targetHostBtn" class="target-btn" title="Change target node" data-host="local">⬡</button>
         <button id="themeToggle" class="theme-toggle" title="Toggle theme">◑</button>
+        <a href="#/profile" class="nav-link" data-page="/profile" id="profileNavLink">profile</a>
         <a href="#" id="loginBtn" class="nav-link" style="margin-left:10px;" data-oja-bind="auth.isLoggedIn" data-oja-transform="loginText">Login</a>
     </div>
 </nav>
@@ -22,7 +23,7 @@
 <div id="app" class="main-content"></div>
 
 <!-- SYSTEM STATS BAR -->
-<div class="sys-bar">
+<div class="sys-bar" id="sysBar" title="Click to expand system stats" style="cursor:pointer;">
     <div class="sys-bar-left">
         <span class="sys-item" title="Memory RSS">rss <span data-oja-bind="sys.memRss" data-oja-transform="formatBytes">—</span></span>
         <span class="sys-item hide-mobile" title="Memory Allocated">alloc <span data-oja-bind="sys.memAlloc" data-oja-transform="formatBytes">—</span></span>
@@ -42,6 +43,7 @@
         <span class="sys-item" id="connectionIndicator" data-oja-bind="conn.html" data-oja-bind-type="html">○</span>
         <span class="sys-divider">·</span>
         <span class="sys-item" data-oja-bind="sys.version" title="Version">v—</span>
+        <span class="sys-bar-expand-hint hide-mobile" style="margin-left:8px;opacity:0.4;font-size:10px;">▲</span>
     </div>
 </div>
 
@@ -84,18 +86,36 @@
             <button type="button" id="loginSaveHostBtn" class="btn-icon-save" title="Save">↵</button>
             <button type="button" id="loginResetHostBtn" class="btn small">local</button>
         </div>
-        <form id="loginForm">
-            <input type="text" id="username" placeholder="Username" autocomplete="username" required>
-            <input type="password" id="password" placeholder="Password" autocomplete="current-password" required>
-            <div id="loginTOTPRow" style="display:none;">
-                <input type="text" id="totp" placeholder="Authenticator code (6 digits)"
-                       autocomplete="one-time-code" inputmode="numeric" pattern="[0-9]*"
-                       maxlength="6" style="letter-spacing:0.2em;text-align:center;">
+
+        <!-- Step 1: credentials -->
+        <form id="loginForm" autocomplete="on">
+            <div id="loginStepCreds">
+                <input type="text" id="username" placeholder="Username" autocomplete="username" required>
+                <input type="password" id="password" placeholder="Password" autocomplete="current-password" required>
+                <button type="submit" class="btn primary" style="width:100%;margin-top:4px;">Sign In</button>
             </div>
-            <button type="submit" class="btn primary" style="width:100%;margin-top:4px;">Sign In</button>
+            <!-- Step 2: TOTP — shown after credentials accepted -->
+            <div id="loginStepTOTP" style="display:none;text-align:center;">
+                <div style="font-size:13px;color:var(--text-main);margin-bottom:12px;">
+                    🔐 Enter your authenticator code
+                </div>
+                <input type="text" id="totp" placeholder="000000"
+                       autocomplete="one-time-code" inputmode="numeric" pattern="[0-9]*"
+                       maxlength="6"
+                       style="text-align:center;letter-spacing:0.35em;font-size:22px;font-family:var(--font-mono);width:100%;padding:10px 0;">
+                <div style="font-size:11px;color:var(--text-mute);margin-top:8px;">
+                    Open your authenticator app and enter the 6-digit code
+                </div>
+                <button type="submit" class="btn primary" style="width:100%;margin-top:12px;">Verify</button>
+                <button type="button" id="loginTOTPBack" class="btn" style="width:100%;margin-top:6px;font-size:11px;">← Back</button>
+            </div>
         </form>
         <div id="loginError" style="color:var(--danger);font-size:11px;margin-top:10px;display:none;text-align:center;"></div>
     </div>
+</div>
+</form>
+<div id="loginError" style="color:var(--danger);font-size:11px;margin-top:10px;display:none;text-align:center;"></div>
+</div>
 </div>
 
 <div class="modal-overlay" id="ruleModal">
@@ -158,13 +178,12 @@
 <!-- EDIT JSON MODAL -->
 <div class="modal-overlay" id="editHostJsonModal">
     <div class="modal" style="max-width: 650px; width: 95vw;">
-        <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px;">
-            <div>
-                <h3 style="margin-bottom: 5px;">Edit Host: <span id="editHostTitle" class="mono"></span></h3>
-                <p style="font-size:11px;color:var(--text-mute);margin:0;">Edit configuration as JSON. Saves immediately to disk and hot-reloads.</p>
-            </div>
-            <button id="formatHostJsonBtn" type="button" class="btn small" style="background:var(--hover-bg);">✨ Format</button>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+            <h3 style="margin:0;font-size:15px;">Edit: <span id="editHostTitle" class="mono" style="font-size:14px;"></span></h3>
+            <button id="formatHostJsonBtn" type="button" class="btn small">Format</button>
         </div>
+        <div id="editHostFormatTabs" style="margin-bottom:10px;"></div>
+        <p style="font-size:11px;color:var(--text-mute);margin:0 0 10px;">Changes save immediately to disk and hot-reload.</p>
 
         <div id="editHostError" style="color:var(--danger);font-size:12px;margin-bottom:10px;display:none;background:rgba(255,59,48,0.1);padding:8px;border-radius:4px;"></div>
 
@@ -213,10 +232,15 @@
         <div class="drawer-title">
             <div class="drawer-breadcrumb"><span class="drawer-back-link" data-action="close-drawer" data-target="routeDrawer">← All hosts</span></div>
             <h2 id="drawerRoutePath">/</h2>
-            <div style="display:flex;align-items:center;gap:8px;">
-                <span id="drawerHostName" class="clickable-host" data-action="filter-host">example.com</span>
-                <div id="drawerSparkline" style="opacity:0.75;" title="Requests/sec — last 60s"></div>
-                <button id="drawerPerfBtn" class="btn small" style="font-size:10px;padding:3px 8px;opacity:0.7;">📈 Perf</button>
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:2px;">
+                <span id="drawerHostName" class="clickable-host" title="Open in new tab"
+                      style="cursor:pointer;font-family:var(--font-mono);font-size:12px;color:var(--text-mute);display:inline-flex;align-items:center;gap:3px;">
+                    example.com <span style="opacity:0.45;font-size:10px;">↗</span>
+                </span>
+                <div style="display:flex;align-items:center;gap:8px;">
+                    <div id="drawerSparkline" style="opacity:0.75;" title="Requests/sec — last 60s"></div>
+                    <button id="drawerPerfBtn" class="btn small" style="font-size:10px;padding:3px 10px;">📈 Perf</button>
+                </div>
             </div>
         </div>
         <button class="drawer-close" data-action="close-drawer" data-target="routeDrawer">&times;</button>
@@ -241,6 +265,7 @@
     import { fetchTelemetry, login, fetchStatus, addFirewallRule, broadcastClusterRoute,
         addHost, addHostHCL, checkHostExists, deleteHost } from '../js/api.js';
     import { buildHostConfig } from '../js/host-builder.js';
+    import { formatHCL, validateHCL } from '../js/hcl.js';
     // Shell emits events for app-level actions — main.js owns the responses.
     // No imports from main.js — that would create a circular dependency.
     let _perfCharts = null;
@@ -299,56 +324,104 @@
             window._isPolling = false; window._latencyStarted = false;
         }
         updateNodeDisplay();
-
-        // Fetch server status to know whether to show OTP field
-        const status = await fetchStatus();
-        const totpRow = query('#loginTOTPRow');
-        if (totpRow) totpRow.style.display = status?.totp ? '' : 'none';
-
+        _loginReset();
         modal.open('loginModal');
+        requestAnimationFrame(() => query('#username')?.focus());
+    });
 
-        // Focus username (or OTP if already filled)
-        requestAnimationFrame(() => {
-            const u = query('#username');
-            if (u && !u.value) u.focus();
-        });
+    // ── Login state machine ────────────────────────────────────────────────────
+    // _loginPending holds credentials between step 1 and step 2 (TOTP).
+    // Held in closure only — never written to storage.
+    let _loginPending = null;
+
+    function _loginReset() {
+        _loginPending = null;
+        const credsEl = query('#loginStepCreds');
+        const totpEl  = query('#loginStepTOTP');
+        const errEl   = query('#loginError');
+        const totpIn  = query('#totp');
+        if (credsEl) credsEl.style.display = '';
+        if (totpEl)  totpEl.style.display  = 'none';
+        if (errEl)   { errEl.style.display = 'none'; errEl.textContent = ''; }
+        if (totpIn)  totpIn.value = '';
+    }
+
+    function _loginShowTOTP() {
+        const credsEl = query('#loginStepCreds');
+        const totpEl  = query('#loginStepTOTP');
+        if (credsEl) credsEl.style.display = 'none';
+        if (totpEl)  totpEl.style.display  = '';
+        requestAnimationFrame(() => query('#totp')?.focus());
+    }
+
+    on('#loginTOTPBack', 'click', () => {
+        _loginReset();
+        requestAnimationFrame(() => query('#username')?.focus());
+    });
+
+    // Auto-submit when 6 digits entered in TOTP field
+    on('#totp', 'input', (e, el) => {
+        el.value = el.value.replace(/\D/g, '').slice(0, 6);
+        if (el.value.length === 6) query('#loginForm')?.requestSubmit();
     });
 
     on('#loginForm', 'submit', async (e, el) => {
         e.preventDefault();
         const errEl     = query('#loginError');
-        const submitBtn = el.querySelector('[type="submit"]');
+        const submitBtn = el.querySelector('[type="submit"]:not([style*="display:none"])');
         if (errEl) { errEl.style.display = 'none'; errEl.textContent = ''; }
 
         const targetVal = el.querySelector('#loginTargetHost')?.value?.trim();
         if (targetVal !== undefined) { setHost(targetVal); updateNodeDisplay(); }
 
-        submitBtn.disabled = true; submitBtn.textContent = 'Signing in…';
+        if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = 'Signing in…'; }
 
         try {
-            const totpVal = (query('#totp')?.value || '').trim();
-            const result  = await login(
-                el.querySelector('#username').value,
-                el.querySelector('#password').value,
-                totpVal,
-            );
-            submitBtn.disabled = false; submitBtn.textContent = 'Sign In';
+            // Step 2 — TOTP pending: send stored creds + OTP
+            if (_loginPending) {
+                const totpVal = (query('#totp')?.value || '').trim();
+                if (!totpVal) {
+                    if (errEl) { errEl.textContent = 'Enter the 6-digit code from your authenticator app'; errEl.style.display = 'block'; }
+                    if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = 'Verify'; }
+                    return;
+                }
+                const result = await login(_loginPending.username, _loginPending.password, totpVal);
+                _loginPending = null;
+                if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = 'Verify'; }
+                emit('auth:login:success', { type: result.type, token: result.token });
+                checkLatency();
+                return;
+            }
+
+            // Step 1 — credentials only
+            const username = el.querySelector('#username').value;
+            const password = el.querySelector('#password').value;
+            const result   = await login(username, password, '');
+            if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = 'Sign In'; }
             emit('auth:login:success', { type: result.type, token: result.token });
             checkLatency();
+
         } catch (err) {
-            submitBtn.disabled = false; submitBtn.textContent = 'Sign In';
-            const msg = err.message || 'Login failed';
-            if (errEl) { errEl.textContent = msg; errEl.style.display = 'block'; }
-            // If OTP related error, focus the OTP field
-            if (msg.toLowerCase().includes('totp') || msg.toLowerCase().includes('code')) {
-                const totpField = query('#totp');
-                if (totpField) {
-                    query('#loginTOTPRow').style.display = '';
-                    totpField.value = '';
-                    totpField.focus();
-                }
+            if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = _loginPending ? 'Verify' : 'Sign In'; }
+            const msg = (err.message || 'Login failed').trim();
+
+            // Server needs TOTP — transition to step 2
+            if (err.status === 401 && msg.toLowerCase().includes('totp')) {
+                _loginPending = {
+                    username: el.querySelector('#username').value,
+                    password: el.querySelector('#password').value,
+                };
+                _loginShowTOTP();
+                return;
             }
+
+            if (errEl) { errEl.textContent = msg; errEl.style.display = 'block'; }
         }
+    });
+
+    // Reset login state when modal closes
+    listen('modal:close', ({ id }) => {
+        if (id === 'loginModal') _loginReset();
     });
 
     // .close-modal delegation is handled by Oja modal.js — no duplicate needed.
@@ -471,12 +544,39 @@
 
     // Draw sparkline into the route drawer header whenever a route drawer opens
     listen('drawer:open-route', ({ host }) => {
+        // Wire domain → opens host in new tab
+        const nameEl = query('#drawerHostName');
+        if (nameEl) {
+            nameEl.textContent   = host;
+            nameEl.dataset.host  = host;
+        }
+        // Wire Perf button to this host
+        const perfBtn = query('#drawerPerfBtn');
+        if (perfBtn) perfBtn.dataset.hostname = host;
+
         requestAnimationFrame(() => {
             const el = query('#drawerSparkline');
             if (!el) return;
             const spark = store.get('sparklines.' + host);
             if (spark?.rps?.length >= 2) el.innerHTML = buildSparklineSVG(spark.rps, 100, 32);
         });
+    });
+
+    // Domain name in drawer → open in new tab
+    on('#drawerHostName', 'click', (e, el) => {
+        const host = el.dataset.host || el.textContent.trim();
+        if (!host) return;
+        // Determine protocol from config TLS
+        const cfg = store.get('lastConfig')?.hosts?.[host];
+        const tls = cfg?.tls?.mode;
+        const proto = (!tls || tls === 'none') ? 'http' : 'https';
+        window.open(`${proto}://${host}`, '_blank', 'noopener');
+    });
+
+    // Perf button in drawer
+    on('#drawerPerfBtn', 'click', (e, btn) => {
+        const hostname = btn.dataset.hostname;
+        if (hostname) emit('perf:open', { hostname });
     });
 
     function buildAddHostWizard(mount) {
@@ -555,6 +655,7 @@
         function stepDomainHTML() {
             const d = draft || {};
             const isLocal = _isLocalDomain(d.domain);
+            const showCert = d.tls_mode === 'local' && !isLocal;
             return `
             <div class="wz-field-group">
                 <label class="wz-label">Domain <span style="color:var(--danger)">*</span></label>
@@ -566,7 +667,7 @@
                 </div>
                 <div class="wz-hint">No protocol prefix — e.g. <code>app.example.com</code> or <code>localhost</code></div>
             </div>
-            <div class="wz-field-group" id="wzTLSSection" style="display:${isLocal?'none':''};">
+            <div class="wz-field-group wz-collapsible${isLocal?' wz-collapsed':''}" id="wzTLSSection">
                 <label class="wz-label">TLS Mode</label>
                 <div class="wz-radio-group">
                     <label class="wz-radio"><input type="radio" name="tls_mode" data-wizard-field="tls_mode" value="auto"${(!d.tls_mode||d.tls_mode==='auto')?' checked':''}> <span>Auto — Let's Encrypt (recommended)</span></label>
@@ -574,7 +675,7 @@
                     <label class="wz-radio"><input type="radio" name="tls_mode" data-wizard-field="tls_mode" value="none"${d.tls_mode==='none'?' checked':''}> <span>None (HTTP only)</span></label>
                 </div>
             </div>
-            <div class="wz-field-group" id="wzLocalCertFields" style="display:${d.tls_mode==='local'&&!isLocal?'':'none'};">
+            <div class="wz-field-group wz-collapsible${showCert?'':' wz-collapsed'}" id="wzLocalCertFields">
                 <label class="wz-label">Certificate file <span style="color:var(--danger)">*</span></label>
                 <div class="wz-path-row">
                     <input type="text" data-wizard-field="tls_cert" id="wzTLSCert" class="wz-input"
@@ -590,28 +691,32 @@
         }
 
         function _wireDomainStep(bodyEl) {
-            const domainInput  = bodyEl.querySelector('#wzDomainInput');
-            const tlsSection   = bodyEl.querySelector('#wzTLSSection');
-            const certFields   = bodyEl.querySelector('#wzLocalCertFields');
-            const statusEl     = bodyEl.querySelector('#wzDomainStatus');
-            let _checkTimer    = null;
+            const domainInput = bodyEl.querySelector('#wzDomainInput');
+            const tlsSection  = bodyEl.querySelector('#wzTLSSection');
+            const certFields  = bodyEl.querySelector('#wzLocalCertFields');
+            const statusEl    = bodyEl.querySelector('#wzDomainStatus');
+            let _checkTimer   = null;
+
+            function _collapse(el, yes) {
+                if (!el) return;
+                el.classList.toggle('wz-collapsed', yes);
+            }
 
             function updateTLSVisibility() {
                 const isLocal = _isLocalDomain(domainInput?.value);
-                if (tlsSection) tlsSection.style.display = isLocal ? 'none' : '';
-                // If local, hide cert fields too regardless of radio state
-                if (isLocal && certFields) certFields.style.display = 'none';
+                _collapse(tlsSection, isLocal);
                 if (isLocal) {
-                    // Deselect any radio, effectively omitting TLS from config
+                    _collapse(certFields, true);
                     bodyEl.querySelectorAll('[name="tls_mode"]').forEach(r => r.checked = false);
+                } else {
+                    updateCertVisibility();
                 }
             }
 
             function updateCertVisibility() {
                 const localRadio = bodyEl.querySelector('[name="tls_mode"][value="local"]');
                 const isLocal    = _isLocalDomain(domainInput?.value);
-                if (certFields) certFields.style.display =
-                    (!isLocal && localRadio?.checked) ? '' : 'none';
+                _collapse(certFields, isLocal || !localRadio?.checked);
             }
 
             bodyEl.querySelectorAll('[name="tls_mode"]').forEach(r => {
@@ -620,29 +725,20 @@
 
             domainInput?.addEventListener('input', () => {
                 updateTLSVisibility();
-                updateCertVisibility();
-                // Debounce collision check
                 clearTimeout(_checkTimer);
-                statusEl.textContent = '';
+                if (statusEl) statusEl.textContent = '';
                 const val = (domainInput.value || '').trim().toLowerCase();
                 if (!val || val.includes('://') || val.length < 3) return;
                 _checkTimer = setTimeout(async () => {
                     try {
                         const exists = await checkHostExists(val);
-                        if (exists) {
-                            statusEl.textContent = '⚠ already exists';
-                            statusEl.style.color = 'var(--warning)';
-                        } else {
-                            statusEl.textContent = '✓ available';
-                            statusEl.style.color = 'var(--success)';
+                        if (statusEl) {
+                            statusEl.textContent = exists ? '⚠ already exists' : '✓ available';
+                            statusEl.style.color = exists ? 'var(--warning)' : 'var(--success)';
                         }
-                    } catch { statusEl.textContent = ''; }
+                    } catch { if (statusEl) statusEl.textContent = ''; }
                 }, 600);
             });
-
-            // Initial state
-            updateTLSVisibility();
-            updateCertVisibility();
         }
 
         // ── Step 3: Routes (tabbed) ──────────────────────────────────────────
@@ -831,6 +927,13 @@
                             <label class="wz-check"><input type="checkbox" data-wz-route-field="engineData.web_spa"${ed.web_spa?' checked':''}> SPA mode (fallback to index.html)</label>
                             <label class="wz-check"><input type="checkbox" data-wz-route-field="engineData.web_nocache"${ed.web_nocache?' checked':''}> Disable caching headers</label>
                         </div>
+                        <div style="margin-top:10px;">
+                            <label class="wz-label" style="font-size:11px;">Index files (comma-separated, no paths)</label>
+                            <input type="text" data-wz-route-field="engineData.web_index" class="wz-input"
+                                   placeholder="index.html, index.php, index.md, README.md"
+                                   value="${(ed.web_index||'')}">
+                            <div class="wz-hint">Files tried in order when a directory is requested. No slashes.</div>
+                        </div>
                     </div>
                 </div>
 
@@ -892,7 +995,19 @@
                         <label class="wz-switch" onclick="event.stopPropagation()"><input type="checkbox" data-wz-route-field="engineData.markdown_enabled"${ed.markdown_enabled?' checked':''}><span class="wz-slider"></span></label>
                     </div>
                     <div class="wz-toggle-body" id="wztMd_${route.id}" style="display:none;">
-                        <div class="wz-hint">Markdown files served as styled HTML. Syntax highlighting included.</div>
+                        <div class="wz-field-group" style="margin-bottom:10px;">
+                            <label class="wz-label" style="font-size:11px;">Mode</label>
+                            <div class="wz-radio-group" style="flex-direction:row;gap:16px;">
+                                <label class="wz-radio"><input type="radio" name="md_view_${route.id}" data-wz-route-field="engineData.markdown_view" value=""${!ed.markdown_view?' checked':''}> <span>Website — rendered pages</span></label>
+                                <label class="wz-radio"><input type="radio" name="md_view_${route.id}" data-wz-route-field="engineData.markdown_view" value="browse"${ed.markdown_view==='browse'?' checked':''}> <span>Browse — document manager</span></label>
+                            </div>
+                            <div class="wz-hint">Browse mode shows a navigable file tree with rendered previews.</div>
+                        </div>
+                        <div class="wz-inline-checks">
+                            <label class="wz-check"><input type="checkbox" data-wz-route-field="engineData.markdown_toc"${ed.markdown_toc?' checked':''}> Table of contents</label>
+                            <label class="wz-check"><input type="checkbox" data-wz-route-field="engineData.markdown_highlight"${ed.markdown_highlight?' checked':''}> Syntax highlighting</label>
+                            <label class="wz-check"><input type="checkbox" data-wz-route-field="engineData.markdown_unsafe"${ed.markdown_unsafe?' checked':''}> Allow raw HTML in markdown</label>
+                        </div>
                     </div>
                 </div>
 
@@ -1381,18 +1496,33 @@
             const bodyId = header?.dataset.target;
             const body   = bodyId ? (container.querySelector('#' + bodyId) ?? query('#' + bodyId)) : null;
             if (!body) return;
+
+            // Mark as managed so the delegated wz-toggle handler skips it
+            body.dataset.collapseManaged = '1';
+
             const panel = collapse.attach(null, body, { open: cb.checked, animation: true, duration: 180 });
             cb.addEventListener('change', () => { cb.checked ? panel.open() : panel.close(); });
+
+            // Header click toggles via collapse AND syncs checkbox — stop propagation
+            // so the outer delegated handler (which would double-toggle) never fires
+            header.addEventListener('click', (e) => {
+                // Don't toggle when clicking the switch label itself (that's the checkbox)
+                if (e.target.closest('.wz-switch')) return;
+                e.stopPropagation();
+                cb.checked ? panel.close() : panel.open();
+                cb.checked = !cb.checked;
+                cb.dispatchEvent(new Event('change', { bubbles: false }));
+            });
         });
     }
 
-
-    // ── Toggle card header click — uses Oja collapse.toggle ──────────────────
+    // ── Toggle card header click — delegated, only for unmanaged panels ───────
     on('[data-action="wz-toggle"]', 'click', (e, el) => {
         const targetId = el.dataset.target;
         if (!targetId) return;
         const body = query('#' + targetId);
-        if (body) collapse.toggle(body, { animation: true, duration: 180 });
+        if (!body || body.dataset.collapseManaged) return; // skip if managed by _wireToggleCards
+        collapse.toggle(body, { animation: true, duration: 180 });
     });
 
     // ── Type card selection ───────────────────────────────────────────────────
@@ -1416,47 +1546,90 @@
         }
     });
 
-    // JSON Format Button — standard JSON.parse only (CSP blocks eval/new Function)
+    // ── Edit Host modal — HCL / JSON tabs ─────────────────────────────────────
+    let _editHostFormat = 'hcl'; // tracks which format is active
+
+    // Initialise format tabs once
+    tabs.render(query('#editHostFormatTabs'), [
+        { key: 'hcl',  label: 'HCL'  },
+        { key: 'json', label: 'JSON' },
+    ], {
+        active:   'hcl',
+        variant:  'pill',
+        onChange: (key) => {
+            _editHostFormat = key;
+            const ta  = query('#editHostJsonTextarea');
+            const btn = query('#saveHostJsonBtn');
+            if (ta)  ta.placeholder = key === 'hcl' ? 'HCL configuration…' : 'JSON configuration…';
+            if (btn) btn.textContent = 'Save Configuration';
+        },
+    });
+
+    // Open via Edit HCL button (hosts.html emits host:open-edit-hcl with raw HCL)
+    listen('host:open-edit-hcl', ({ domain, hcl }) => {
+        _editHostFormat = 'hcl';
+        query('#editHostTitle').innerText          = domain;
+        query('#editHostError').style.display      = 'none';
+        query('#editHostJsonTextarea').value       = hcl;
+        query('#saveHostJsonBtn').dataset.hostname = domain;
+        modal.open('editHostJsonModal');
+    });
+
+    // Open via dashboard right-click → Edit config (JSON path, kept for compatibility)
+    listen('host:open-edit', ({ domain }) => {
+        const config = store.get('lastConfig')?.hosts?.[domain];
+        if (!config) return;
+        _editHostFormat = 'json';
+        query('#editHostTitle').innerText          = domain;
+        query('#editHostError').style.display      = 'none';
+        query('#editHostJsonTextarea').value       = JSON.stringify(config, null, 4);
+        query('#saveHostJsonBtn').dataset.hostname = domain;
+        modal.open('editHostJsonModal');
+    });
+
+    // Format button — works for both HCL (validate + reformat) and JSON
     on('#formatHostJsonBtn', 'click', () => {
-        const el = query('#editHostJsonTextarea');
+        const el    = query('#editHostJsonTextarea');
         const errEl = query('#editHostError');
         try {
-            const parsed = JSON.parse(el.value);
-            el.value = JSON.stringify(parsed, null, 4);
+            if (_editHostFormat === 'hcl') {
+                el.value = formatHCL(el.value);
+            } else {
+                el.value = JSON.stringify(JSON.parse(el.value), null, 4);
+            }
             errEl.style.display = 'none';
         } catch(err) {
-            errEl.innerText = 'Cannot format — invalid JSON: ' + err.message;
+            errEl.innerText = 'Format error: ' + err.message;
             errEl.style.display = 'block';
         }
     });
 
-    // ── Save Host JSON — Bug fix: handler was missing ─────────────────────────
-    // The Edit JSON modal sets dataset.hostname on this button (hosts.html).
-    // POSTing to /api/hosts is idempotent — it handles both create and update.
+    // Save — sends HCL as text/plain or JSON as application/json
     on('#saveHostJsonBtn', 'click', async (e, btn) => {
         const hostname = btn.dataset.hostname;
         const errEl    = query('#editHostError');
         const ta       = query('#editHostJsonTextarea');
         errEl.style.display = 'none';
 
-        let parsed;
-        try {
-            parsed = JSON.parse(ta.value);
-        } catch(err) {
-            errEl.innerText = 'Invalid JSON: ' + err.message;
-            errEl.style.display = 'block';
-            return;
-        }
-
         ui.btn.loading(btn, 'Saving…');
         try {
-            const result = await addHost(hostname, parsed);
+            let result;
+            if (_editHostFormat === 'hcl') {
+                result = await addHostHCL(ta.value);
+            } else {
+                let parsed;
+                try { parsed = JSON.parse(ta.value); }
+                catch(err) {
+                    ui.btn.reset(btn);
+                    errEl.innerText = 'Invalid JSON: ' + err.message;
+                    errEl.style.display = 'block';
+                    return;
+                }
+                result = await addHost(hostname, parsed);
+            }
             if (result?.error) throw new Error(result.error);
             ui.btn.done(btn, 'Saved ✓');
-            setTimeout(() => {
-                modal.closeAll();
-                ui.btn.reset(btn);
-            }, 800);
+            setTimeout(() => { modal.closeAll(); ui.btn.reset(btn); }, 800);
             emit('hosts:refresh');
             emit('config:reload');
         } catch(err) {
@@ -1551,6 +1724,14 @@
 
     if (!window._latencyStarted) { window._latencyStarted = true; checkLatency(); }
 
+    // ── Sys-bar expand on click ────────────────────────────────────────────────
+    on('#sysBar', 'click', () => {
+        const bar   = query('#sysBar');
+        const hint  = query('.sys-bar-expand-hint');
+        const expanded = bar?.classList.toggle('sys-bar-expanded');
+        if (hint) hint.textContent = expanded ? '▼' : '▲';
+    });
+
     // THE PERFORMANCE MODAL IMPLEMENTATION
     function _initPerfCharts() {
         _perfCharts = {
@@ -1563,22 +1744,35 @@
 
     async function loadPerfData(hostname, range) {
         if (!_perfCharts) _initPerfCharts();
-        const skel = '<div class="perf-skeleton"></div>';['perfChartReqs','perfChartP99','perfChartErrors','perfChartBE'].forEach(id => {
+
+        // Check if telemetry is enabled in the stored config
+        const telEnabled = store.get('lastConfig')?.global?.admin?.telemetry?.enabled;
+        if (telEnabled && telEnabled !== 'on') {
+            ['perfChartReqs','perfChartP99','perfChartErrors','perfChartBE'].forEach(id => {
+                const el = query('#' + id);
+                if (el) el.innerHTML = '<div style="height:100%;display:flex;align-items:center;justify-content:center;color:var(--text-mute);font-size:11px;text-align:center;padding:0 12px;">Telemetry not enabled.<br>Add <code style="background:var(--hover-bg);padding:1px 4px;border-radius:3px;">telemetry { enabled = &quot;on&quot; }</code> to your admin block.</div>';
+            });
+            return;
+        }
+
+        const skel = '<div class="perf-skeleton"></div>';
+        ['perfChartReqs','perfChartP99','perfChartErrors','perfChartBE'].forEach(id => {
             const el = query('#' + id);
             if (el) el.innerHTML = skel;
         });
 
         const data = await fetchTelemetry(hostname, range);
-        if (!data?.samples?.length) {['perfChartReqs','perfChartP99','perfChartErrors','perfChartBE'].forEach(id => {
-            const el = query('#' + id);
-            if (el) el.innerHTML = '<div style="height:100%;display:flex;align-items:center;justify-content:center;color:var(--text-mute);font-size:11px;">No history data yet</div>';
-        });
+        if (!data?.samples?.length) {
+            ['perfChartReqs','perfChartP99','perfChartErrors','perfChartBE'].forEach(id => {
+                const el = query('#' + id);
+                if (el) el.innerHTML = '<div style="height:100%;display:flex;align-items:center;justify-content:center;color:var(--text-mute);font-size:11px;">No history data yet — data accumulates over time</div>';
+            });
             return;
         }
         const s = data.samples;
-        _perfCharts.reqs.update(s.map(x => x.requests_sec),      s.map(x => x.ts));
-        _perfCharts.p99.update(s.map(x => x.p99_ms),             s.map(x => x.ts));
-        _perfCharts.errors.update(s.map(x => x.error_rate),      s.map(x => x.ts));
+        _perfCharts.reqs.update(s.map(x => x.requests_sec),        s.map(x => x.ts));
+        _perfCharts.p99.update(s.map(x => x.p99_ms),               s.map(x => x.ts));
+        _perfCharts.errors.update(s.map(x => x.error_rate),        s.map(x => x.ts));
         _perfCharts.backends.update(s.map(x => x.active_backends), s.map(x => x.ts));
 
         if (s.length >= 2) {

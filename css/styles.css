@@ -584,8 +584,8 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
 }
 .stat-item span {
     font-family: var(--font-mono);
-    font-size: 17px;
-    font-weight: 500;
+    font-size: 24px;
+    font-weight: 400;
     color: var(--footer-value);
     line-height: 1;
 }
@@ -1795,3 +1795,58 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
 /* ─── Wizard: sparkline in drawer header ────────────────────────────────── */
 #drawerSparkline { flex-shrink: 0; }
 #drawerSparkline:hover { opacity: 1 !important; }
+
+/* ─── Login: step transition ─────────────────────────────────────────────── */
+#loginStepCreds, #loginStepTOTP { transition: opacity 0.2s; }
+
+/* ─── Wizard: TLS section smooth height animation ───────────────────────── */
+.wz-collapsible {
+    overflow: hidden;
+    transition: max-height 0.25s ease, opacity 0.2s ease;
+    max-height: 400px;
+    opacity: 1;
+}
+.wz-collapsible.wz-collapsed {
+    max-height: 0;
+    opacity: 0;
+}
+
+/* ─── Sys-bar expand ─────────────────────────────────────────────────────── */
+.sys-bar {
+    transition: height 0.2s ease, font-size 0.2s ease, padding 0.2s ease;
+}
+.sys-bar.sys-bar-expanded {
+    height: auto;
+    min-height: 52px;
+    font-size: 13px;
+    padding: 10px 16px;
+    flex-wrap: wrap;
+    gap: 8px;
+    cursor: pointer;
+}
+.sys-bar.sys-bar-expanded .sys-item span { font-size: 14px; }
+.sys-bar.sys-bar-expanded .hide-mobile  { display: inline !important; }
+.sys-bar.sys-bar-expanded .sys-bar-left,
+.sys-bar.sys-bar-expanded .sys-bar-right { gap: 8px; flex-wrap: wrap; }
+
+/* ─── Dashboard: notification bar ───────────────────────────────────────── */
+.notif-bar {
+    margin-top: 16px;
+    padding: 10px 14px;
+    background: var(--panel-bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 12px;
+    color: var(--text-mute);
+}
+.notif-bar-icon { font-size: 14px; flex-shrink: 0; opacity: 0.6; }
+.notif-bar-text { flex: 1; }
+
+/* ─── Tab containers used standalone (not in wizard) get no bottom margin ── */
+#configFormatTabs.oja-tabs,
+#editHostFormatTabs.oja-tabs { margin-bottom: 0; }
+#configFormatTabs .oja-tabs-pill,
+#editHostFormatTabs .oja-tabs-pill { margin-bottom: 0; }

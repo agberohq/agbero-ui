@@ -76,7 +76,7 @@
     }
 
     async function refresh() {
-        render(await fetchFirewall(getCreds()));
+        render(await fetchFirewall());
     }
 
     // ── Events — registered at top level, not inside onMount ──────────────────
@@ -93,7 +93,7 @@
         btn.disabled = true;
         btn.textContent = 'Unblocking…';
         try {
-            await deleteFirewallRule(getCreds(), ip);
+            await deleteFirewallRule(ip);
             notify.show(`${ip} unblocked`, 'success');
             refresh();
         } catch {

@@ -5,7 +5,8 @@ import { startMetricsPolling } from './metrics.js';
 import { fetchConfig, fetchUptime, parseCertificates } from './api.js';
 import './drawer-listeners.js';
 
-const LOG = (...a) => console.log('[agbero]', ...a);
+// eslint-disable-next-line no-unused-vars
+const LOG = () => {}; // stripped — was console.log
 const ERR = (...a) => console.error('[agbero]', ...a);
 
 // Module-level router — accessible by onLoginSuccess and event handlers.
@@ -105,15 +106,16 @@ async function bootstrapApp() {
     LOG('bootstrapApp: router + listeners registered');
 
     LOG('bootstrapApp: applying shell layout');
-    await layout.apply('#shell', 'layouts/shell.html');
-    LOG('bootstrapApp: layout applied — #loginModal exists=',
-        !!document.getElementById('loginModal'));
-
+    // Register cleanup BEFORE awaiting layout.apply — Oja captures the layout
+    // context synchronously. After the await the context is gone.
     layout.onUnmount(() => {
         if (_stopPolling) { _stopPolling(); _stopPolling = null; }
         window._isPolling = false;
         if (_configPollTimer) { clearInterval(_configPollTimer); _configPollTimer = null; }
     });
+    await layout.apply('#shell', 'layouts/shell.html');
+    LOG('bootstrapApp: layout applied — #loginModal exists=',
+        !!document.getElementById('loginModal'));
 
     listen('api:offline', () => {
         LOG('api:offline');
@@ -144,6 +146,8 @@ async function bootstrapApp() {
         'ctrl+5': () => router.navigate('/firewall'),
         'ctrl+6': () => router.navigate('/logs'),
         'ctrl+7': () => router.navigate('/config'),
+        'ctrl+8': () => router.navigate('/keeper'),
+        'ctrl+9': () => router.navigate('/profile'),
         'escape': () => {
             const be = query('#backendDrawer');
             if (be?.classList.contains('active')) { be.classList.remove('active'); return; }
@@ -204,6 +208,8 @@ async function bootstrapApp() {
     appGroup.Get('/firewall', Out.component('pages/firewall.html'));
     appGroup.Get('/logs',     Out.component('pages/logs.html'));
     appGroup.Get('/config',   Out.component('pages/config.html'));
+    appGroup.Get('/keeper',   Out.component('pages/keeper.html'));
+    appGroup.Get('/profile',  Out.component('pages/profile.html'));
     router.NotFound(Out.html('<div class="page active"><div class="empty-state">Page Not Found</div></div>'));
 
     if (isLoggedIn()) {
