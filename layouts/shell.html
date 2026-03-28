@@ -394,9 +394,10 @@
 
 <script type="module">
     import { modal, layout, emit, listen, chart, on, auth, ui, query, queryAll, notify, wizard, collapse, tabs } from '../lib/oja.full.esm.js';
+
     import { store, isLoggedIn, clearCredentials, getCreds, getHost, setHost } from '../js/store.js';
     import { fetchTelemetry, login, logout, fetchStatus, addFirewallRule, broadcastClusterRoute,
-        addHost, addHostHCL, updateHost, updateHostHCL, checkHostExists, deleteHost } from '../js/api.js';
+        addHost, addHostHCL, updateHost, updateHostHCL, checkHostExists, deleteHost, getHostHCL } from '../js/api.js';
     import { buildHostConfig } from '../js/host-builder.js';
     import { formatHCL, validateHCL } from '../js/hcl.js';
     import { initials } from '../js/utils.js';
@@ -2058,7 +2059,6 @@
     // Open via dashboard right-click → Edit config
     // Also fetch HCL from server to preserve comments
     listen('host:open-edit', async ({ domain }) => {
-        const { getHostHCL } = await import('../js/api.js');
         query('#editHostTitle').innerText          = domain;
         query('#editHostError').style.display      = 'none';
         query('#editHostError').style.cssText      = '';
