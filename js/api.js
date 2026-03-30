@@ -22,7 +22,6 @@
 import { Api } from '../lib/oja.full.esm.js';
 import { getHost } from './store.js';
 
-// F-05: re-export from utils — single canonical source
 export { fmtNum, formatBytes } from './utils.js';
 
 // ── Singleton Api instance ────────────────────────────────────────────────────
@@ -333,7 +332,7 @@ export async function kvDelete(key) {
 // ── Pure data helpers ─────────────────────────────────────────────────────────
 
 /**
- * F-04: parseCertificates now accepts the /api/v1/certs payload shape.
+ * parseCertificates now accepts the /api/v1/certs payload shape.
  * The /config endpoint does NOT contain certificate expiry data —
  * that comes from /api/v1/certs.
  *
