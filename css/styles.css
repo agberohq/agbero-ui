@@ -275,10 +275,10 @@
     --danger:   #f07171;
     --warning:  #fa8d3e;
     --info:     #55b4d4;
-    --footer-bg:      #8a9199;
-    --footer-border:  #d9d8d7;
-    --footer-label:   #abb0b6;
-    --footer-value:   #575f66;
+    --footer-bg:      #1a1f2b;  /* Dark footer maintains visual hierarchy */
+    --footer-border:  #2d3340;
+    --footer-label:   #8a9199;
+    --footer-value:   #e6e9f0;
     --chart-bar-fill: #399ee6;
 }
 
