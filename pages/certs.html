@@ -21,13 +21,19 @@
 
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;">
             <div>
-                <label class="wz-label">Certificate (PEM)</label>
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+                    <label class="wz-label" style="margin:0;">Certificate (PEM)</label>
+                    <label class="btn small" style="cursor:pointer;font-size:11px;">📂 Load file<input type="file" id="certPemFile" accept=".pem,.crt,.cer" style="display:none;"></label>
+                </div>
                 <textarea id="certPem" class="wz-input" rows="6" spellcheck="false"
                           style="resize:vertical;font-family:var(--font-mono);font-size:11px;"
                           placeholder="-----BEGIN CERTIFICATE-----&#10;...&#10;-----END CERTIFICATE-----"></textarea>
             </div>
             <div>
-                <label class="wz-label">Private Key (PEM)</label>
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+                    <label class="wz-label" style="margin:0;">Private Key (PEM)</label>
+                    <label class="btn small" style="cursor:pointer;font-size:11px;">📂 Load file<input type="file" id="certKeyFile" accept=".pem,.key" style="display:none;"></label>
+                </div>
                 <textarea id="certKey" class="wz-input" rows="6" spellcheck="false"
                           style="resize:vertical;font-family:var(--font-mono);font-size:11px;"
                           placeholder="-----BEGIN PRIVATE KEY-----&#10;...&#10;-----END PRIVATE KEY-----"></textarea>
@@ -59,7 +65,7 @@
 </div>
 
 <script type="module">
-    import { component, on, ui, notify, query } from '../lib/oja.full.esm.js';
+    import { component, on, emit, ui, notify, query } from '../lib/oja.full.esm.js';
     import { fetchCerts, uploadCert, deleteCert } from '../js/api.js';
     import { store } from '../js/store.js';
 
@@ -182,52 +188,40 @@
         }
     });
 
-    // ── Delete — two-step inline confirm ─────────────────────────────────────
-    let _confirmDomain = null;
-
-    on('.certs-delete-btn', 'click', async (e, btn) => {
+    // ── Delete — strict delete modal with TOTP gate ──────────────────────────────
+    on('.certs-delete-btn', 'click', (e, btn) => {
         const domain = btn.dataset.domain;
-
-        if (btn.dataset.confirm === '1') {
-            btn.disabled = true;
-            try {
-                const res = await deleteCert(domain);
-                if (res?.status === 'ok') {
-                    notify.show(`Certificate for ${domain} deleted`, 'success');
-                    _confirmDomain = null;
-                    refresh();
-                } else {
-                    btn.disabled = false;
-                    btn.dataset.confirm = '';
-                    notify.show(res?.error || 'Delete failed', 'error');
-                }
-            } catch {
-                btn.disabled = false;
-                btn.dataset.confirm = '';
-            }
-        } else {
-            // Reset any other pending confirm
-            if (_confirmDomain && _confirmDomain !== domain) {
-                const prev = query(`.certs-delete-btn[data-domain="${_confirmDomain}"]`);
-                if (prev) { prev.textContent = 'Delete'; prev.dataset.confirm = ''; prev.style.cssText = 'color:var(--danger);border-color:rgba(255,59,48,0.4);'; }
-            }
-            _confirmDomain = domain;
-            btn.dataset.confirm = '1';
-            btn.textContent = 'Sure?';
-            btn.style.background = 'var(--danger)';
-            btn.style.color = '#fff';
-            btn.style.borderColor = 'var(--danger)';
-            setTimeout(() => {
-                if (btn.dataset.confirm === '1') {
-                    btn.dataset.confirm = '';
-                    btn.textContent = 'Delete';
-                    btn.style.cssText = 'color:var(--danger);border-color:rgba(255,59,48,0.4);';
-                    _confirmDomain = null;
-                }
-            }, 3000);
-        }
+        emit('app:strict-delete', {
+            message: `Delete the certificate for <strong>${domain}</strong>?<br><span style="font-size:11px;color:var(--text-mute);">This will remove the custom certificate. Agbero will fall back to Let's Encrypt or HTTP for this domain.</span>`,
+            targetText: domain,
+            onConfirm: async (otpCode) => {
+                try {
+                    const res = await deleteCert(domain, otpCode);
+                    if (res?.status === 'ok' || !res?.error) {
+                        notify.show(`Certificate for ${domain} deleted`, 'success');
+                        refresh();
+                    } else {
+                        notify.show(res?.error || 'Delete failed', 'error');
+                    }
+                } catch { notify.show('Delete failed', 'error'); }
+            },
+        });
     });
 
-    refresh();
+    // ── File upload support ────────────────────────────────────────────────────
+    // Allow selecting .pem/.crt/.key files in addition to paste
+    on('#certPemFile', 'change', (e, inp) => {
+        const file = inp.files?.[0]; if (!file) return;
+        const reader = new FileReader();
+        reader.onload = ev => { const ta = query('#certPem'); if (ta) ta.value = ev.target.result; };
+        reader.readAsText(file);
+    });
+    on('#certKeyFile', 'change', (e, inp) => {
+        const file = inp.files?.[0]; if (!file) return;
+        const reader = new FileReader();
+        reader.onload = ev => { const ta = query('#certKey'); if (ta) ta.value = ev.target.result; };
+        reader.readAsText(file);
+    });
+
     component.onUnmount(() => {});
 </script>

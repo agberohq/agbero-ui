@@ -265,7 +265,7 @@ function serverlessSection(serverless) {
 
 function backendRow(b, cfgB, bStat, hostname, routeIdx, bIdx, type) {
     const url  = bStat.url || bStat.address || cfgB.address || '';
-    const w    = cfgB.weight !== undefined ? cfgB.weight : 1;
+    const w    = cfgB.weight !== undefined ? cfgB.weight : (bStat.url || bStat.address ? '—' : 1);
     const hSt  = bStat.health?.status || 'Unknown';
 
     let dc = 'warn', dt = 'No data';
@@ -392,7 +392,7 @@ function httpFeaturesSection(item) {
     }
 
     // Firewall — uses .status (Enabled type)
-    if (isOn(item.firewall?.status)) {
+    if (isOn(item.firewall?.enabled)) {
         const fw = item.firewall;
         const fwParts = [badge('Enabled', 'danger')];
         if (fw.ignore_global)         fwParts.push(badge('ignores global', 'warning'));
