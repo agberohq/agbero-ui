@@ -96,13 +96,30 @@
             </div>
         </div>
 
+        <div class="config-section" style="margin-top:20px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
+                <h3 style="margin:0;font-size:13px;text-transform:uppercase;letter-spacing:.5px;color:var(--text-mute);">Session Management</h3>
+            </div>
+            <div class="kv-grid" style="margin-bottom:14px;">
+                <div class="kv-item"><label>Current Session</label><div id="revokeCurrentSession" class="mono" style="font-size:11px;">—</div></div>
+                <div class="kv-item"><label>Token Expires</label><div id="revokeExpiry">—</div></div>
+            </div>
+            <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+                <button class="btn small" id="revokeCurrentBtn" style="color:var(--warning);border-color:var(--warning);">
+                    Revoke Current Session
+                </button>
+                <span style="font-size:11px;color:var(--text-mute);">Logs you out immediately and invalidates this token on the server.</span>
+            </div>
+            <div id="revokeError" style="color:var(--danger);font-size:11px;margin-top:8px;display:none;"></div>
+        </div>
+
     </div>
 </div>
 
 <script type="module">
-    import { component, on, notify, query } from '../lib/oja.full.esm.js';
-    import { store, getCreds }              from '../js/store.js';
-    import { setupTOTP, keeperTOTPSetup }   from '../js/api.js';
+    import { component, on, notify, query, emit } from '../lib/oja.full.esm.js';
+    import { store, getCreds, clearCredentials } from '../js/store.js';
+    import { setupTOTP, keeperTOTPSetup, logout }   from '../js/api.js';
     import { isOn }                         from '../js/utils.js';
 
     let _pendingSecret  = '';
@@ -171,6 +188,41 @@
     }
 
     boot();
+
+    // ── Revocation section boot ────────────────────────────────────────────────
+    (function bootRevocation() {
+        const { token } = getCreds();
+        if (!token) return;
+        // Show truncated token as session ID
+        const sessionEl = query('#revokeCurrentSession');
+        if (sessionEl) sessionEl.textContent = token.length > 20 ? token.slice(0,8) + '…' + token.slice(-6) : token;
+        // Show expiry from JWT
+        try {
+            const payload = JSON.parse(atob(token.split('.')[1]));
+            if (payload.exp) {
+                const exp = new Date(payload.exp * 1000);
+                const expEl = query('#revokeExpiry');
+                if (expEl) expEl.textContent = exp.toLocaleString([], { month:'short', day:'numeric', hour:'2-digit', minute:'2-digit' });
+            }
+        } catch {}
+    })();
+
+    on('#revokeCurrentBtn', 'click', async (e, btn) => {
+        const errEl = query('#revokeError');
+        if (errEl) errEl.style.display = 'none';
+        btn.disabled = true; btn.textContent = 'Revoking…';
+        try {
+            await logout();
+            clearCredentials();
+            store.set('auth.isLoggedIn', false);
+            window._isPolling = false;
+            notify.show('Session revoked — logging out', 'success');
+            setTimeout(() => emit('app:navigate', { path: '/' }), 800);
+        } catch(err) {
+            btn.disabled = false; btn.textContent = 'Revoke Current Session';
+            if (errEl) { errEl.textContent = err.message || 'Revocation failed'; errEl.style.display = 'block'; }
+        }
+    });
 
     // ── Setup ─────────────────────────────────────────────────────────────────
 
