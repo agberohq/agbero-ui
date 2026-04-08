@@ -7,7 +7,7 @@ export function buildHostConfig(data) {
     const domain  = (data.domain || '').trim().toLowerCase();
     const tlsMode = data.tls_mode || '';
 
-    // ── TLS block ─────────────────────────────────────────────────────────────
+    // TLS block
     // Local/dev domains: omit TLS block entirely — server inherits global (HTTP)
     // Valid modes: "letsencrypt", "local", "none", "custom_ca", "auto"
     // If user picks "auto" we send "letsencrypt" (server default when mode is empty is also letsencrypt)
@@ -35,7 +35,7 @@ export function buildHostConfig(data) {
         // If no mode chosen → omit TLS block; server defaults to letsencrypt
     }
 
-    // ── Routes ────────────────────────────────────────────────────────────────
+    // Routes
     const routesInput = data.routes;
     let routes;
     if (Array.isArray(routesInput) && routesInput.length > 0) {
@@ -49,7 +49,7 @@ export function buildHostConfig(data) {
     return host;
 }
 
-// ── Route builder ─────────────────────────────────────────────────────────────
+// Route builder
 
 function buildRouteFromWizardRoute(r, hostType) {
     const route = {
@@ -77,7 +77,7 @@ function buildRouteFromWizardRoute(r, hostType) {
     return route;
 }
 
-// ── Web block — alaye.Web ─────────────────────────────────────────────────────
+// Web block — alaye.Web
 // Web.Root = WebRoot (string-like), Web.Index = []string, Web.Listing = bool,
 // Web.SPA = bool, Web.NoCache = bool, Web.PHP = PHP{}, Web.Git = Git{},
 // Web.Markdown = Markdown{}
@@ -146,7 +146,7 @@ function buildWebBlock(data) {
     return web;
 }
 
-// ── Backend block — alaye.Backend{ Enabled, Strategy, Servers []Server } ──────
+// Backend block — alaye.Backend{ Enabled, Strategy, Servers []Server }
 // JSON key on Route is "backends" (field name Backend, json tag "backends")
 
 function buildBackendBlock(data) {
@@ -166,7 +166,7 @@ function buildBackendBlock(data) {
     return { enabled: 'on', strategy, servers };
 }
 
-// ── Serverless block — alaye.Serverless{ Enabled, RESTs []REST, Workers []Work } ─
+// Serverless block — alaye.Serverless{ Enabled, RESTs []REST, Workers []Work }
 // REST json:"rests", Work json:"workers"
 // REST.Headers = map[string]string  (NOT a single auth header — multiple headers)
 // Work.Command = []string
@@ -238,7 +238,7 @@ function buildServerlessBlock(data) {
     return block;
 }
 
-// ── Extras — applied directly onto route object ───────────────────────────────
+// Extras — applied directly onto route object
 
 function applyExtras(route, data) {
     // Cache — alaye.Cache{ Enabled, Driver, TTL Duration, Methods []string }
@@ -276,10 +276,9 @@ function applyExtras(route, data) {
         };
     }
 
-    // GZIP — alaye.CompressionConfig json:"compression_config"
-    // hcl tag is "compression,block" — JSON key is "compression_config"
+    // Compression — alaye.Compression json:"compression" (renamed from compression_config)
     if (data.gzip_enabled) {
-        route.compression_config = { enabled: 'on', type: 'gzip', level: 5 };
+        route.compression = { enabled: 'on', type: 'gzip', level: 5 };
     }
 
     // Firewall — alaye.FirewallRoute{ Status Enabled json:"enabled", ... }
@@ -308,7 +307,7 @@ function applyExtras(route, data) {
     }
 }
 
-// ── Auth ──────────────────────────────────────────────────────────────────────
+// Auth
 
 function applyAuth(route, data) {
     // BasicAuth — alaye.BasicAuth{ Enabled, Users []string, Realm }
@@ -334,7 +333,7 @@ function applyAuth(route, data) {
     }
 }
 
-// ── Legacy flat format ────────────────────────────────────────────────────────
+// Legacy flat format
 
 function buildLegacyRoute(data) {
     const route = { enabled: 'on', path: (data.route_path || '/').trim() || '/' };

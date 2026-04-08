@@ -39,16 +39,17 @@
 
 <script type="module">
 import { component, emit, on, notify, query, queryAll, tabs, collapse } from '../lib/oja.full.esm.js';
-import { addHost, checkHostExists } from '../js/api.js';
+import { addHost, addHostHCL, checkHostExists } from '../js/api.js';
 import { buildHostConfig } from '../js/host-builder.js';
+import { formatHCL } from '../js/hcl.js';
 
-// ── Draft (sessionStorage only — cleared on success) ─────────────────────────
+// Draft (sessionStorage only — cleared on success)
 const DRAFT_KEY = 'agbero-add-host-draft';
 function saveDraft(d)  { try { sessionStorage.setItem(DRAFT_KEY, JSON.stringify(d)); } catch {} }
 function loadDraft()   { try { return JSON.parse(sessionStorage.getItem(DRAFT_KEY)||'null'); } catch { return null; } }
 function clearDraft()  { sessionStorage.removeItem(DRAFT_KEY); }
 
-// ── State ─────────────────────────────────────────────────────────────────────
+// State
 let _step = 0, _draft = {}, _routes = [_newRoute('/')], _activeRouteId = '', _routeTabHandle = null;
 _activeRouteId = _routes[0].id;
 
@@ -56,7 +57,7 @@ function _newRoute(path) {
     return { id:'r'+Date.now()+Math.random().toString(36).slice(2,6), path:path||'/', engineData:{}, extras:{}, authData:{} };
 }
 
-// ── Draft resume ──────────────────────────────────────────────────────────────
+// Draft resume
 const _saved = loadDraft();
 if (_saved?.host_type) {
     const banner = query('#draftResumeBanner'), desc = query('#draftResumeDesc');
@@ -68,7 +69,7 @@ if (_saved?.host_type) {
 
 on('#addHostBackBtn', 'click', () => emit('app:navigate', { path: '/hosts' }));
 
-// ── Breadcrumb ────────────────────────────────────────────────────────────────
+// Breadcrumb
 function _updateSteps() {
     queryAll('#addHostSteps .add-host-step').forEach((el,i) => {
         el.classList.toggle('active', i===_step); el.classList.toggle('done', i<_step);
@@ -98,8 +99,8 @@ function _renderTypeStep(el) {
              feats:['Load balancing: round-robin, least-conn, sticky, adaptive','Health checks and circuit breaker','Rate limiting, CORS, caching','JWT / Basic / Forward auth']},
             {type:'serverless', icon:'λ', title:'Serverless',       sub:'Managed workers and REST proxy endpoints',
              feats:['HTTP-triggered, cron, background, or run-once workers','REST proxies with server-side credential injection','Git-sourced worker code with auto-deploy','env.VAR keeps secrets off the browser']},
-            {type:'advanced',   icon:'⚙️',title:'Advanced',         sub:'Write the full host configuration as JSON',
-             feats:['Full control over every config field','Mix web, proxy, serverless, TCP proxy on one host','Validated before submission','For power users only']},
+            {type:'advanced',   icon:'⚙️',title:'Advanced',         sub:'Write the full host configuration as HCL or JSON',
+             feats:['Full control over every config field','Native HCL with comments and block syntax','Mix web, proxy, serverless, TCP proxy on one host','Validated before submission']},
         ].map(c=>`
         <button class="host-type-card${_draft.host_type===c.type?' selected':''}" data-type="${c.type}">
             <span class="htc-icon">${c.icon}</span>
@@ -264,7 +265,7 @@ function _buildEnginePanel(el, route, hostType) {
     else if(hostType==='serverless') { el.innerHTML=_serverlessEngineHTML(); _wireServerlessEngine(el,route); }
 }
 
-// ── Web engine (full — all original fields) ────────────────────────────────
+// Web engine (full — all original fields)
 function _webEngineHTML(route) {
     const ed=route.engineData||{};
     return `<div class="wz-toggle-grid">
@@ -286,7 +287,7 @@ function _webEngineHTML(route) {
                 <div style="margin-top:10px;">
                     <label class="wz-label" style="font-size:11px;">Index files (comma-separated, no paths)</label>
                     <input type="text" data-wz-route-field="engineData.web_index" class="wz-input"
-                           placeholder="index.html, index.php, index.md, README.md" value="${_esc(ed.web_index||'')}">
+                           placeholder="index.html, index.php, index.md, README.md" value="${_esc(ed.web_index||'index.html, index.htm, index.php, index.md, README.md')}">
                     <div class="wz-hint">Files tried in order when a directory is requested. No slashes.</div>
                 </div>
             </div>
@@ -373,7 +374,7 @@ function _wireWebEngine(el, route) {
     authSel?.addEventListener('change',updateGitAuth); updateGitAuth();
 }
 
-// ── Proxy engine ───────────────────────────────────────────────────────────
+// Proxy engine
 function _proxyEngineHTML(route) {
     const ed=route.engineData||{}, s=ed.lb_strategy||'round_robin';
     return `<div class="wz-section-heading">Backends</div>
@@ -415,7 +416,7 @@ function _wireProxyEngine(el, route) {
     render(); syncField();
 }
 
-// ── Serverless engine ──────────────────────────────────────────────────────
+// Serverless engine
 function _serverlessEngineHTML() {
     return `<div id="wzSlTabNav"></div>
     <div id="wzSlPanelRests" style="padding-top:10px;">
@@ -523,7 +524,7 @@ function _wireServerlessEngine(el, route) {
     renderRests(); renderWorkers();
 }
 
-// ── Extras panel (full) ────────────────────────────────────────────────────
+// Extras panel (full)
 function _extrasHTML(route) {
     const ex=route.extras||{};
     return `<div class="wz-toggle-grid">
@@ -605,7 +606,7 @@ function _extrasHTML(route) {
     </div>`;
 }
 
-// ── Auth panel (full) ──────────────────────────────────────────────────────
+// Auth panel (full)
 function _authHTML(route) {
     const au=route.authData||{};
     return `<div class="wz-toggle-grid">
@@ -643,7 +644,7 @@ function _authHTML(route) {
     </div>`;
 }
 
-// ── _collectRouteData ─────────────────────────────────────────────────────
+// _collectRouteData
 function _collectRouteData(el, route) {
     el.querySelectorAll('[data-wz-route-field]').forEach(inp=>{
         const key=inp.dataset.wzRouteField; if(!key) return;
@@ -655,7 +656,7 @@ function _collectRouteData(el, route) {
     });
 }
 
-// ── _wireToggleCards ──────────────────────────────────────────────────────────
+// _wireToggleCards
 // Guard against flicker: checkbox click fires 'change'; we must not re-fire it
 // from within the header click handler or we get double-toggle blocking.
 function _wireToggleCards(container) {
@@ -695,6 +696,12 @@ function _wireToggleCards(container) {
 // No global listener needed; would cause double-firing with collapseManaged panels.
 
 // ════════════════════ STEP 3 — Review ════════════════════════════════════════
+function _isHCL(text) {
+    // HCL has block syntax (ident {) or attribute assignments without surrounding braces at top level
+    const t = text.trimStart();
+    return !t.startsWith('{') && !t.startsWith('[');
+}
+
 function _renderReviewStep(el) {
     const isAdvanced=_draft.host_type==='advanced';
     let previewObj={}, existing=_draft.raw_json||'';
@@ -706,10 +713,11 @@ function _renderReviewStep(el) {
     }
 
     el.innerHTML=`
-    ${isAdvanced?`<p class="wz-section-hint">Write the complete host config as JSON. It will be validated on save.</p>`
-                :`<p style="font-size:13px;color:var(--text-mute);margin:0 0 12px;line-height:1.6;">Review your configuration before creating. You can edit the JSON directly.</p>`}
+    ${isAdvanced
+        ?`<p class="wz-section-hint">Write the complete host config as HCL or JSON. HCL supports comments and is the native format. Validated before saving.</p>`
+        :`<p style="font-size:13px;color:var(--text-mute);margin:0 0 12px;line-height:1.6;">Review your configuration before creating. You can edit the JSON directly.</p>`}
     <div style="display:flex;gap:8px;margin-bottom:8px;">
-        <button id="wzFormatJsonBtn" class="btn small">✨ Format JSON</button>
+        <button id="wzFormatJsonBtn" class="btn small">✨ Format</button>
     </div>
     <div id="submitErrorBox" class="submit-error-box"></div>
     <textarea id="wzReviewJson" class="json-editor" spellcheck="false"
@@ -720,7 +728,6 @@ function _renderReviewStep(el) {
 
     const nb=query('#addHostNextBtn'); if(nb) nb.style.display='none';
     const nav=query('#addHostNav'); if(nav) nav.style.display='flex';
-    // Wire prev button for review step (no _wireNav called here)
     if (_navAbort) _navAbort.abort();
     _navAbort = new AbortController();
     query('#addHostPrevBtn')?.addEventListener('click', () => {
@@ -729,8 +736,14 @@ function _renderReviewStep(el) {
 
     on('#wzFormatJsonBtn','click',()=>{
         const ta=query('#wzReviewJson');
-        try{ ta.value=JSON.stringify(JSON.parse(ta.value),null,2); }
-        catch(e){ notify.show('Invalid JSON: '+e.message,'error'); }
+        const raw=(ta.value||'').trim();
+        if(_isHCL(raw)){
+            try{ ta.value=formatHCL(raw); }
+            catch(e){ notify.show('HCL format error: '+e.message,'error'); }
+        }else{
+            try{ ta.value=JSON.stringify(JSON.parse(raw),null,2); }
+            catch(e){ notify.show('Invalid JSON: '+e.message,'error'); }
+        }
     });
     if(isAdvanced) query('#wzReviewJson').addEventListener('input',e=>{ _draft.raw_json=e.target.value; });
 
@@ -740,10 +753,20 @@ function _renderReviewStep(el) {
         btn.disabled=true; btn.textContent='Creating…';
         try{
             const raw=(query('#wzReviewJson')?.value||'').trim();
-            const config=JSON.parse(raw||'{}');
-            const domain=(_draft.domain||config.domains?.[0]||'').trim().toLowerCase();
-            if(!domain) throw new Error('Domain is required');
-            const result=await addHost(domain,config);
+            let domain;
+            let result;
+            if(isAdvanced && _isHCL(raw)){
+                // HCL path — domain extracted from ?domain= or we parse it from content
+                const domainMatch = raw.match(/domains\s*=\s*\[\s*"([^"]+)"/);
+                domain = (domainMatch?.[1] || _draft.domain || '').trim().toLowerCase();
+                if(!domain) throw new Error('Domain is required — add domains = ["example.com"] to your HCL');
+                result = await addHostHCL(raw);
+            } else {
+                const config=JSON.parse(raw||'{}');
+                domain=(_draft.domain||config.domains?.[0]||'').trim().toLowerCase();
+                if(!domain) throw new Error('Domain is required');
+                result=await addHost(domain,config);
+            }
             if(result?.error) throw new Error(result.error);
             clearDraft();
             notify.show(domain+' created successfully','success');
@@ -757,7 +780,7 @@ function _renderReviewStep(el) {
     });
 }
 
-// ── Nav wiring ────────────────────────────────────────────────────────────────
+// Nav wiring
 // Use AbortController so each call REPLACES the previous handler instead of accumulating
 let _navAbort = null;
 function _wireNav(validate) {

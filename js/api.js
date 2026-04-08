@@ -22,9 +22,10 @@
 import { Api } from '../lib/oja.full.esm.js';
 import { getHost } from './store.js';
 
+// re-export from utils — single canonical source
 export { fmtNum, formatBytes } from './utils.js';
 
-// ── Singleton Api instance ────────────────────────────────────────────────────
+// Singleton Api instance
 
 let _api = null;
 
@@ -38,7 +39,7 @@ export function reinitApi() { _api = _makeApi(); }
 export function apiSetToken(token)  { getApi().setToken(token); }
 export function apiClearToken()     { getApi().clearAuth(); }
 
-// ── Safe fetch wrapper ────────────────────────────────────────────────────────
+// Safe fetch wrapper
 
 async function _safe(fn) {
     try { return await fn(); }
@@ -50,15 +51,14 @@ async function _safe(fn) {
     }
 }
 
-// ── Unauthenticated endpoints ─────────────────────────────────────────────────
+// Unauthenticated endpoints
 
 export async function fetchStatus() {
     const base = getHost() || window.location.origin;
     try {
         const res  = await fetch(base + '/status');
         if (!res.ok) return null;
-        const data = await res.json();
-        return { auth: data.auth === 'true', totp: data.totp === 'true' };
+        return await res.json();
     } catch { return null; }
 }
 
@@ -130,7 +130,7 @@ export async function logout() {
     } catch { /* ignore */ }
 }
 
-// ── Monitoring ────────────────────────────────────────────────────────────────
+// Monitoring
 
 export async function fetchUptime()  { return _safe(() => getApi().get('/uptime')); }
 export async function fetchConfig()  { return _safe(() => getApi().get('/config')); }
@@ -138,7 +138,7 @@ export async function fetchLogs(lines) {
     return _safe(() => getApi().get(`/logs?limit=${lines}`));
 }
 
-// ── Host management  /api/v1/discovery ───────────────────────────────────────
+// Host management  /api/v1/discovery
 
 export async function checkHostExists(domain) {
     const base  = getHost() || window.location.origin;
@@ -203,7 +203,7 @@ export async function deleteHost(domain, otpCode = '') {
     ));
 }
 
-// ── Certificate management  /api/v1/certs ────────────────────────────────────
+// Certificate management  /api/v1/certs
 
 export async function fetchCerts() {
     return _safe(() => getApi().get('/api/v1/certs'));
@@ -218,7 +218,7 @@ export async function deleteCert(domain, otpCode = '') {
     return _safe(() => getApi().delete(`/api/v1/certs/${encodeURIComponent(domain)}`, extra));
 }
 
-// ── Firewall  /api/v1/firewall ────────────────────────────────────────────────
+// Firewall  /api/v1/firewall
 
 export async function fetchFirewall() {
     return _safe(() => getApi().get('/api/v1/firewall'));
@@ -234,7 +234,7 @@ export async function deleteFirewallRule(ip) {
     ));
 }
 
-// ── Cluster  /api/v1/cluster ─────────────────────────────────────────────────
+// Cluster  /api/v1/cluster
 
 export async function broadcastClusterRoute(body) {
     return _safe(() => getApi().post('/api/v1/cluster', body));
@@ -246,7 +246,7 @@ export async function deleteClusterRoute(host, path) {
     ));
 }
 
-// ── Telemetry  /api/v1/telemetry ─────────────────────────────────────────────
+// Telemetry  /api/v1/telemetry
 
 export async function fetchTelemetry(host, range) {
     return _safe(() => getApi().get(
@@ -258,7 +258,7 @@ export async function fetchTelemetryHosts() {
     return _safe(() => getApi().get('/api/v1/telemetry/hosts'));
 }
 
-// ── Keeper  /api/v1/keeper ────────────────────────────────────────────────────
+// Keeper  /api/v1/keeper
 
 export async function keeperUnlock(passphrase) {
     return _safe(() => getApi().post('/api/v1/keeper/unlock', { passphrase }));
@@ -287,18 +287,7 @@ export async function keeperDelete(key, otpCode = '') {
     ));
 }
 
-export async function keeperTOTPSetup(username) {
-    return _safe(() => getApi().post(
-        `/api/v1/keeper/totp/${encodeURIComponent(username)}`, {}
-    ));
-}
-
-export function keeperTOTPQRUrl(username) {
-    const base = getHost() || window.location.origin;
-    return `${base}/api/v1/keeper/totp/${encodeURIComponent(username)}/qr.svg`;
-}
-
-// ── TOTP  /api/v1/totp ───────────────────────────────────────────────────────
+// TOTP  /api/v1/totp
 
 export async function setupTOTP() {
     return _safe(() => getApi().post('/api/v1/totp/setup', {}));
@@ -309,13 +298,13 @@ export function getTOTPQRUrl(username) {
     return `${base}/api/v1/totp/${encodeURIComponent(username)}/qr.svg`;
 }
 
-// ── Secrets utility  /api/v1/secrets ─────────────────────────────────────────
+// Secrets utility  /api/v1/secrets
 
 export async function generateSecret(action, opts = {}) {
     return _safe(() => getApi().post('/api/v1/secrets', { action, ...opts }));
 }
 
-// ── KV  /api/v1/kv/:key (in-memory, gone on server restart) ─────────────────
+// KV  /api/v1/kv/:key (in-memory, gone on server restart)
 
 export async function kvGet(key) {
     return _safe(() => getApi().get(`/api/v1/kv/${encodeURIComponent(key)}`));
@@ -329,35 +318,28 @@ export async function kvDelete(key) {
     return _safe(() => getApi().delete(`/api/v1/kv/${encodeURIComponent(key)}`));
 }
 
-// ── Pure data helpers ─────────────────────────────────────────────────────────
+// Pure data helpers
 
 /**
- * parseCertificates now accepts the /api/v1/certs payload shape.
- * The /config endpoint does NOT contain certificate expiry data —
- * that comes from /api/v1/certs.
- *
- * Expected input: array of { domain, expiry, issuer, ... }
- * Also handles the flat config.hosts shape as legacy fallback.
+ * parseCertificates — maps /api/v1/certs payload to the shape used by the UI.
+ * API returns: { certificates: [{ domain, file, expires_at, is_expired, days_left }] }
+ * days_left is server-computed (integer). expires_at drives the live countdown
+ * for certs expiring within 30 days.
  */
 export function parseCertificates(certsPayload) {
     if (!certsPayload) return [];
 
-    // New path: array from /api/v1/certs
-    if (Array.isArray(certsPayload)) {
-        return certsPayload.map(c => {
-            const exp      = new Date(c.expiry || c.not_after || 0);
-            const daysLeft = Math.floor((exp - Date.now()) / 86400000);
-            return {
-                host:     c.domain || c.host || '',
-                expiry:   c.expiry || c.not_after || '',
-                daysLeft,
-                issuer:   c.issuer || "Let's Encrypt",
-            };
-        }).filter(c => c.host);
-    }
+    const list = Array.isArray(certsPayload)
+        ? certsPayload
+        : (Array.isArray(certsPayload.certificates) ? certsPayload.certificates : []);
 
-    // Legacy fallback: config.hosts object (no expiry data — returns empty)
-    return [];
+    return list.map(c => ({
+        domain:     c.domain     || '',
+        file:       c.file       || '',
+        expires_at: c.expires_at || '',
+        is_expired: c.is_expired === true,
+        days_left:  typeof c.days_left === 'number' ? c.days_left : null,
+    })).filter(c => c.domain);
 }
 
 export function parseJWTExpiry(token) {

@@ -177,32 +177,31 @@
             </div>
         </form>
 
-        <!-- Step 2: challenge (keeper + TOTP) — shown only when 202 returned -->
+        <!-- Step 2: challenge wizard — one step per requirement -->
         <form id="loginChallengeForm" style="display:none;">
-            <div id="loginStepChallenge">
-                <div style="font-size:13px;color:var(--text-main);margin-bottom:14px;font-weight:500;">🔐 Additional verification required</div>
+            <!-- Progress dots shown when >1 challenge -->
+            <div id="challengeProgress" style="display:none;text-align:center;margin-bottom:14px;gap:6px;justify-content:center;align-items:center;"></div>
 
-                <!-- Keeper passphrase row — shown only if "keeper_unlock" in requirements -->
-                <div id="challengeKeeperRow" style="display:none;margin-bottom:12px;">
-                    <label style="font-size:11px;color:var(--text-mute);display:block;margin-bottom:4px;">Keeper Passphrase</label>
-                    <input type="password" id="keeperPassphraseInput" placeholder="Store passphrase"
-                           autocomplete="current-password"
-                           style="width:100%;box-sizing:border-box;">
-                    <div style="font-size:10px;color:var(--text-mute);margin-top:3px;">The keeper secret store needs to be unlocked to proceed.</div>
-                </div>
-
-                <!-- TOTP row — shown only if "totp" in requirements -->
-                <div id="challengeTOTPRow" style="display:none;margin-bottom:12px;">
-                    <label style="font-size:11px;color:var(--text-mute);display:block;margin-bottom:4px;">Authenticator Code</label>
-                    <input type="text" id="totp" placeholder="000000"
-                           autocomplete="one-time-code" inputmode="numeric" pattern="[0-9]*" maxlength="6"
-                           style="text-align:center;letter-spacing:0.35em;font-size:22px;font-family:var(--font-mono);width:100%;padding:10px 0;box-sizing:border-box;">
-                    <div style="font-size:10px;color:var(--text-mute);margin-top:3px;">Open your authenticator app and enter the 6-digit code.</div>
-                </div>
-
-                <button type="submit" class="btn primary" style="width:100%;">Verify</button>
-                <button type="button" id="loginChallengeBack" class="btn" style="width:100%;margin-top:6px;font-size:11px;">← Back</button>
+            <!-- Keeper unlock step -->
+            <div id="challengeStepKeeper" style="display:none;">
+                <div style="font-size:13px;font-weight:500;color:var(--text-main);margin-bottom:4px;">🔐 Unlock Secret Store</div>
+                <div style="font-size:11px;color:var(--text-mute);margin-bottom:14px;">The keeper secret store must be unlocked before you can sign in.</div>
+                <label style="font-size:11px;color:var(--text-mute);display:block;margin-bottom:4px;">Passphrase</label>
+                <input type="password" id="keeperPassphraseInput" placeholder="Store passphrase"
+                       autocomplete="current-password" style="width:100%;box-sizing:border-box;">
             </div>
+
+            <!-- TOTP step -->
+            <div id="challengeStepTOTP" style="display:none;">
+                <div style="font-size:13px;font-weight:500;color:var(--text-main);margin-bottom:4px;">🔑 Authenticator Code</div>
+                <div style="font-size:11px;color:var(--text-mute);margin-bottom:14px;">Open your authenticator app and enter the 6-digit code.</div>
+                <input type="text" id="totp" placeholder="000000"
+                       autocomplete="one-time-code" inputmode="numeric" pattern="[0-9]*" maxlength="6"
+                       style="text-align:center;letter-spacing:0.35em;font-size:28px;font-family:var(--font-mono);width:100%;padding:12px 0;box-sizing:border-box;border-radius:8px;">
+            </div>
+
+            <button type="submit" id="challengeNextBtn" class="btn primary" style="width:100%;margin-top:14px;">Next →</button>
+            <button type="button" id="loginChallengeBack" class="btn" style="width:100%;margin-top:6px;font-size:11px;">← Back</button>
         </form>
 
         <div id="loginError" style="color:var(--danger);font-size:11px;margin-top:10px;display:none;text-align:center;"></div>
@@ -219,7 +218,10 @@
             <select id="fwDuration">
                 <option value="0">Permanent</option>
                 <option value="3600">1 Hour</option>
+                <option value="10800">3 Hours</option>
                 <option value="86400">24 Hours</option>
+                <option value="604800">7 Days</option>
+                <option value="2592000">30 Days</option>
             </select>
             <div id="ruleError" style="color:var(--danger);font-size:11px;margin-bottom:8px;display:none;background:rgba(255,59,48,0.08);padding:8px;border-radius:4px;"></div>
             <button type="submit" class="btn primary" style="width:100%;">Block</button>
@@ -390,12 +392,12 @@ import { fetchTelemetry, logout, fetchStatus, addFirewallRule, broadcastClusterR
     updateHost, updateHostHCL, deleteHost, getHostHCL } from '../js/api.js';
 import { formatHCL, validateHCL } from '../js/hcl.js';
 import { initials, debounce } from '../js/utils.js';
-import { initLogin, updateNodeDisplay, _loginReset } from '../js/login.js';
+import { initLogin, updateNodeDisplay, _loginReset, checkServerStatus } from '../js/login.js';
 
-// ── layout.onUnmount — MUST be at top level ─────────────────────────────────
+// layout.onUnmount — MUST be at top level
 layout.onUnmount(() => { emit('app:layout-unmount'); });
 
-// ── JSON Syntax Highlighter ──────────────────────────────────────────────────
+// JSON Syntax Highlighter
 window.app = window.app || {};
 window.app.syntaxHighlight = function(json) {
     if (typeof json != 'string') { json = JSON.stringify(json, undefined, 4); }
@@ -409,7 +411,7 @@ window.app.syntaxHighlight = function(json) {
     }) + '</pre>';
 };
 
-// ── Node display ─────────────────────────────────────────────────────────────
+// Node display
 updateNodeDisplay();
 on('#targetHostBtn', 'click', () => { query('#targetHostInput').value = getHost(); modal.open('targetHostModal'); });
 on('#targetHostForm', 'submit', (e, el) => {
@@ -419,7 +421,7 @@ on('#targetHostForm', 'submit', (e, el) => {
     window.location.reload();
 });
 
-// ── Avatar ───────────────────────────────────────────────────────────────────
+// Avatar
 function _updateAvatar() {
     const { token } = getCreds();
     let name = 'A';
@@ -430,15 +432,15 @@ function _updateAvatar() {
 _updateAvatar();
 listen('auth:login:success', () => { _setAuthIcon(true); _updateAvatar(); });
 listen('auth:expired',       () => _setAuthIcon(false));
-// M-06: sync icon on api:unauthorized
+// sync icon on api:unauthorized
 listen('auth:icon:update',   ({ loggedIn }) => _setAuthIcon(loggedIn));
 
-// ── Theme (F-01: key is now 'ag-theme') ─────────────────────────────────────
+// Theme (key is now 'ag-theme')
 const THEMES = ['light','dark','dracula','monokai','soft','ayu','tokyo-night','catppuccin','solarized','gruvbox','one-dark','github-dark','rose-pine'];
 
 function _applyTheme(name) {
     document.documentElement.setAttribute('data-theme', name);
-    localStorage.setItem('ag-theme', name);  // F-01: unified key
+    localStorage.setItem('ag-theme', name);  // unified key
     document.querySelectorAll('[data-theme-pick]').forEach(btn => {
         btn.style.fontWeight = btn.dataset.themePick === name ? '600' : '';
     });
@@ -454,7 +456,7 @@ on('[data-theme-pick]', 'click', (e, btn) => {
     query('#themeOverflow')?.classList.remove('open');
 });
 
-// ── Mobile hamburger ─────────────────────────────────────────────────────────
+// Mobile hamburger
 on('#navHamburger',   'click', () => query('#navMobileDrawer')?.classList.add('open'));
 on('#navMobileClose', 'click', () => query('#navMobileDrawer')?.classList.remove('open'));
 on('.nav-mobile-link', 'click', () => query('#navMobileDrawer')?.classList.remove('open'));
@@ -470,7 +472,7 @@ document.addEventListener('click', () => {
     document.querySelectorAll('.nav-overflow.open').forEach(el => el.classList.remove('open'));
 });
 
-// ── Active nav link highlighting ─────────────────────────────────────────────
+// Active nav link highlighting
 function _updateActiveNav(path) {
     document.querySelectorAll('.nav-link, .nav-icon-link, .nav-mobile-link').forEach(el => {
         const page = el.dataset.page || '';
@@ -481,7 +483,7 @@ function _updateActiveNav(path) {
 }
 listen('router:navigate', ({ path }) => _updateActiveNav(path));
 
-// ── Auth icon ────────────────────────────────────────────────────────────────
+// Auth icon
 function _setAuthIcon(loggedIn) {
     const btn = query('#loginBtn');
     if (!btn) return;
@@ -512,19 +514,20 @@ on('#loginBtn', 'click', async e => {
     updateNodeDisplay();
     _loginReset();
     modal.open('loginModal');
+    checkServerStatus();
     requestAnimationFrame(() => query('#username')?.focus());
 });
 
-// ── Init login state machine (S-04) ─────────────────────────────────────────
+// Init login state machine (S-04)
 initLogin();
 
-// ── Ctrl+? help ──────────────────────────────────────────────────────────────
+// Ctrl+? help
 document.addEventListener('keydown', (e) => {
     if ((e.ctrlKey || e.metaKey) && e.key === '?') { e.preventDefault(); modal.open('shortcutsModal'); }
 });
 on('[data-modal="shortcutsModal"]', 'click', () => modal.closeById('shortcutsModal'));
 
-// ── Firewall rule form ────────────────────────────────────────────────────────
+// Firewall rule form
 on('#ruleForm', 'submit', async (e, form) => {
     e.preventDefault();
     const errEl = query('#ruleError');
@@ -549,7 +552,7 @@ on('#ruleForm', 'submit', async (e, form) => {
     }
 });
 
-// ── Cluster route broadcast ────────────────────────────────────────────────────
+// Cluster route broadcast
 on('#clusterRouteForm', 'submit', async (e, form) => {
     e.preventDefault();
     const errEl = form.querySelector('#clusterRouteError') || (() => {
@@ -582,7 +585,7 @@ on('#clusterRouteForm', 'submit', async (e, form) => {
     }
 });
 
-// ── Edit HCL modal ────────────────────────────────────────────────────────────
+// Edit HCL modal
 listen('host:open-edit-hcl', ({ domain, hcl }) => {
     query('#editHostTitle').innerText          = domain;
     query('#editHostError').style.display      = 'none';
@@ -638,7 +641,7 @@ on('#saveHostJsonBtn', 'click', async (e, btn) => {
     }
 });
 
-// ── Strict delete + TOTP gate (Part 7) ────────────────────────────────────────
+// Strict delete + TOTP gate (Part 7)
 let _pendingDelete = null;
 listen('app:strict-delete', ({ message, targetText, onConfirm }) => {
     query('#strictDeleteText').innerHTML    = message;
@@ -655,7 +658,7 @@ listen('app:strict-delete', ({ message, targetText, onConfirm }) => {
     const totpEnabled = store.get('lastConfig')?.global?.admin?.totp?.enabled === 'on';
     if (totpDiv) totpDiv.style.display = totpEnabled ? '' : 'none';
 
-    // M-02: use addEventListener, not oninput — avoid handler leaks
+    // use addEventListener, not oninput — avoid handler leaks
     const oldInput = input.cloneNode(true);
     input.parentNode.replaceChild(oldInput, input);
     oldInput.addEventListener('input', () => {
@@ -671,7 +674,7 @@ on('#strictDeleteBtn', 'click', () => {
     modal.closeAll();
 });
 
-// ── Drawer sparkline ──────────────────────────────────────────────────────────
+// Drawer sparkline
 function buildSparklineSVG(vals, W = 84, H = 28) {
     if (!vals || vals.length < 2) return '';
     const P = 3, iW = W - P * 2, iH = H - P * 2;
@@ -721,7 +724,7 @@ on('#drawerPerfBtn', 'click', (e, btn) => {
     if (hostname) emit('perf:open', { hostname });
 });
 
-// ── Sys-bar expand ────────────────────────────────────────────────────────────
+// Sys-bar expand
 on('#sysBar', 'click', () => {
     const bar  = query('#sysBar');
     const hint = query('.sys-bar-expand-hint');
@@ -729,8 +732,8 @@ on('#sysBar', 'click', () => {
     if (hint) hint.textContent = expanded ? '▼' : '▲';
 });
 
-// ── Connection indicator ───────────────────────────────────────────────────────
-// M-08: plain object in store, not raw HTML
+// Connection indicator
+// plain object in store, not raw HTML
 const LATENCY_ONLINE_MS  = 30_000;
 const LATENCY_OFFLINE_MS =  5_000;
 let _latencyTimer      = null;
@@ -766,7 +769,7 @@ async function checkLatency() {
     const start = Date.now();
     try {
         const base    = getHost() || window.location.origin;
-        // M-04: clearTimeout handled by _scheduleLatency before this call
+        // clearTimeout handled by _scheduleLatency before this call
         const timeout = setTimeout(() => _latencyController.abort(), 5000);
         const res = await fetch(base + '/healthz', { method: 'GET', cache: 'no-store', signal: _latencyController.signal });
         clearTimeout(timeout);
@@ -791,7 +794,7 @@ window.addEventListener('offline', () => { _connDot('var(--danger)', 'offline');
 window.addEventListener('online',  checkLatency);
 if (!window._latencyStarted) { window._latencyStarted = true; checkLatency(); }
 
-// M-01: debounced resize handler for nav (no overflow menu but kept for future use)
+// debounced resize handler for nav (no overflow menu but kept for future use)
 // M-01 note: the overflow menu is removed — this is now a no-op placeholder
 
 </script>

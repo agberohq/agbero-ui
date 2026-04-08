@@ -1,99 +1,148 @@
 /**
- * js/login.js — 2-token login state machine
+ * js/login.js — 2-token login with per-challenge wizard steps
  *
- * Flow per backend admin.go:
- *   Step 1: POST /login {username, password}
- *     → 200: full token immediately (no challenges)
- *     → 202: pre-auth token + requirements[] (challenge_required)
- *   Step 2: POST /login/challenge  Authorization: Bearer <pre-auth-token>
- *     body: { keeper_passphrase?, totp? }
+ * Flow:
+ *   POST /login {username, password}
+ *     → 200: full token, done
+ *     → 202: pre-auth token + requirements[] e.g. ["keeper_unlock","totp"]
+ *   Each requirement gets its own wizard step.
+ *   POST /login/challenge Authorization: Bearer <pre-auth> {keeper_passphrase?, totp?}
  *     → 200: full token
- *
- * requirements can contain: "keeper_unlock", "totp"
- * Both may be required — the UI collects them on one challenge screen.
  */
 import { listen, on, emit, modal, query } from '../lib/oja.full.esm.js';
-import { store, setCredentials, clearCredentials, isLoggedIn, setHost, getHost } from './store.js';
+import { store, setCredentials, getHost, setHost } from './store.js';
 import { login, loginChallenge, fetchStatus } from './api.js';
 
-// ── State ─────────────────────────────────────────────────────────────────────
-let _preAuthToken  = null;   // stored in memory only, never localStorage
-let _requirements  = [];     // ["keeper_unlock", "totp"]
-let _pendingUser   = '';     // username from step 1
+// In-memory state (never written to storage)
+let _preAuthToken = null;
+let _requirements = [];   // ordered list of challenges yet to solve
+let _solved       = {};   // { keeper_passphrase:'...', totp:'...' }
+let _stepIdx      = 0;    // current requirement index
 
-// ── Reset to step 1 ───────────────────────────────────────────────────────────
+// DOM helpers
+const $  = sel => query(sel);
+const show = sel => { const e=$( sel); if(e) e.style.display=''; };
+const hide = sel => { const e=$(sel); if(e) e.style.display='none'; };
+
+// Reset to step 1
 export function _loginReset() {
     _preAuthToken = null;
     _requirements = [];
-    _pendingUser  = '';
-
-    _show('#loginForm');
-    _hide('#loginChallengeForm');
-
-    const errEl = query('#loginError');
-    if (errEl) { errEl.style.display = 'none'; errEl.textContent = ''; }
-
-    const totpIn = query('#totp');
-    if (totpIn) totpIn.value = '';
-    const passIn = query('#keeperPassphraseInput');
-    if (passIn) passIn.value = '';
+    _solved       = {};
+    _stepIdx      = 0;
+    show('#loginForm');
+    hide('#loginChallengeForm');
+    const e = $('#loginError'); if(e){e.style.display='none';e.textContent='';}
+    const t = $('#totp'); if(t) t.value='';
+    const p = $('#keeperPassphraseInput'); if(p) p.value='';
 }
 
-function _show(sel) { const el = query(sel); if (el) el.style.display = ''; }
-function _hide(sel) { const el = query(sel); if (el) el.style.display = 'none'; }
-function _err(msg)  {
-    const el = query('#loginError');
-    if (el) { el.textContent = msg; el.style.display = 'block'; }
+function _err(msg) { const e=$('#loginError'); if(e){e.textContent=msg;e.style.display='block';} }
+function _clearErr() { const e=$('#loginError'); if(e){e.style.display='none';e.textContent='';} }
+
+// Render the current challenge step
+function _renderChallengeStep() {
+    // Hide all challenge panels
+    hide('#challengeStepKeeper');
+    hide('#challengeStepTOTP');
+
+    const current = _requirements[_stepIdx];
+    const total   = _requirements.length;
+    const isLast  = _stepIdx === total - 1;
+
+    // Update progress dots when >1 challenge
+    const prog = $('#challengeProgress');
+    if (prog) {
+        if (total > 1) {
+            prog.style.display = 'flex';
+            prog.innerHTML = _requirements.map((_, i) =>
+                `<span style="display:inline-block;width:8px;height:8px;border-radius:50%;
+                 background:${i === _stepIdx ? 'var(--accent)' : i < _stepIdx ? 'var(--success)' : 'var(--border)'};
+                 transition:background .2s;"></span>`
+            ).join('');
+        } else {
+            prog.style.display = 'none';
+        }
+    }
+
+    // Show the right panel and configure the Next button
+    const nextBtn = $('#challengeNextBtn');
+    if (current === 'keeper_unlock') {
+        show('#challengeStepKeeper');
+        if (nextBtn) nextBtn.textContent = isLast ? 'Verify' : 'Next →';
+        requestAnimationFrame(() => $('#keeperPassphraseInput')?.focus());
+    } else if (current === 'totp') {
+        show('#challengeStepTOTP');
+        if (nextBtn) nextBtn.textContent = isLast ? 'Verify' : 'Next →';
+        requestAnimationFrame(() => $('#totp')?.focus());
+    } else {
+        // Unknown requirement — skip it
+        _stepIdx++;
+        if (_stepIdx < _requirements.length) { _renderChallengeStep(); return; }
+        _submitChallenge();
+        return;
+    }
+
+    show('#loginChallengeForm');
+    hide('#loginForm');
+    _clearErr();
 }
-function _clearErr() {
-    const el = query('#loginError');
-    if (el) { el.style.display = 'none'; el.textContent = ''; }
+
+// Advance wizard: collect current field, go to next or submit
+async function _advanceChallenge() {
+    _clearErr();
+    const current = _requirements[_stepIdx];
+
+    if (current === 'keeper_unlock') {
+        const pass = ($('#keeperPassphraseInput')?.value || '').trim();
+        if (!pass) { _err('Passphrase is required'); return; }
+        _solved.keeper_passphrase = pass;
+    } else if (current === 'totp') {
+        const code = ($('#totp')?.value || '').trim();
+        if (code.length !== 6) { _err('Enter the 6-digit code from your authenticator app'); return; }
+        _solved.totp = code;
+    }
+
+    _stepIdx++;
+    if (_stepIdx < _requirements.length) {
+        _renderChallengeStep();
+    } else {
+        await _submitChallenge();
+    }
 }
 
-// Show the challenge step with only the fields needed
-function _showChallenge(requirements) {
-    _hide('#loginForm');
-
-    // Show keeper field only if required
-    const keeperRow = query('#challengeKeeperRow');
-    if (keeperRow) keeperRow.style.display = requirements.includes('keeper_unlock') ? '' : 'none';
-
-    // Show TOTP field only if required
-    const totpRow = query('#challengeTOTPRow');
-    if (totpRow) totpRow.style.display = requirements.includes('totp') ? '' : 'none';
-
-    _show('#loginChallengeForm');
-
-    // Focus first required field
-    if (requirements.includes('keeper_unlock')) {
-        requestAnimationFrame(() => query('#keeperPassphraseInput')?.focus());
-    } else if (requirements.includes('totp')) {
-        requestAnimationFrame(() => query('#totp')?.focus());
+async function _submitChallenge() {
+    const btn = $('#challengeNextBtn');
+    if (btn) { btn.disabled = true; btn.textContent = 'Verifying…'; }
+    try {
+        const result = await loginChallenge(_preAuthToken, _solved);
+        _preAuthToken = null; // wipe immediately
+        if (btn) { btn.disabled = false; }
+        _onSuccess(result.token, result.expires);
+    } catch (err) {
+        if (btn) { btn.disabled = false; btn.textContent = 'Verify'; }
+        _err(err.message || 'Verification failed');
+        // On failure go back to first unsolved step
+        _stepIdx = Math.max(0, _stepIdx - 1);
     }
 }
 
 export function updateNodeDisplay() {
     const h = getHost();
-    query('#targetHostBtn')?.setAttribute('data-host', h || 'local');
-    const nd = query('#loginNodeDisplay');
-    if (nd) nd.textContent = h || 'local';
-    const ni = query('#loginTargetHost');
-    if (ni) ni.value = h || '';
+    $('#targetHostBtn')?.setAttribute('data-host', h || 'local');
+    const nd = $('#loginNodeDisplay'); if(nd) nd.textContent = h || 'local';
+    const ni = $('#loginTargetHost'); if(ni) ni.value = h || '';
 }
 
 export async function checkServerStatus() {
-    const circle = query('#loginServerDotCircle');
-    const label  = query('#loginServerDotLabel');
+    const circle = $('#loginServerDotCircle');
+    const label  = $('#loginServerDotLabel');
     if (!circle) return;
     try {
         const status = await fetchStatus();
-        if (status) {
-            circle.style.background = 'var(--success)';
-            if (label) label.textContent = 'reachable';
-        } else {
-            circle.style.background = 'var(--danger)';
-            if (label) label.textContent = 'unreachable';
-        }
+        const reachable = status?.status === 'ok';
+        circle.style.background = reachable ? 'var(--success)' : 'var(--danger)';
+        if (label) label.textContent = reachable ? 'reachable' : 'unreachable';
     } catch {
         circle.style.background = 'var(--danger)';
         if (label) label.textContent = 'unreachable';
@@ -101,59 +150,53 @@ export async function checkServerStatus() {
 }
 
 export function initLogin() {
-    // ── Node edit ─────────────────────────────────────────────────────────────
+    // Node edit
     on('#loginEditNodeBtn', 'click', () => {
-        const el = query('#loginNodeEdit');
+        const el = $('#loginNodeEdit');
         if (el) el.style.display = el.style.display === 'flex' ? 'none' : 'flex';
         checkServerStatus();
     });
     on('#loginResetHostBtn', 'click', () => {
         setHost(''); updateNodeDisplay();
-        const edit = query('#loginNodeEdit');
-        if (edit) edit.style.display = 'none';
+        const e = $('#loginNodeEdit'); if(e) e.style.display = 'none';
         checkServerStatus();
     });
     on('#loginSaveHostBtn', 'click', () => {
-        const val = query('#loginTargetHost')?.value?.trim() || '';
+        const val = ($('#loginTargetHost')?.value || '').trim();
         setHost(val); updateNodeDisplay();
-        const edit = query('#loginNodeEdit');
-        if (edit) edit.style.display = 'none';
+        const e = $('#loginNodeEdit'); if(e) e.style.display = 'none';
         checkServerStatus();
     });
 
-    // ── TOTP auto-submit when 6 digits entered ────────────────────────────────
+    // TOTP auto-submit at 6 digits
     on('#totp', 'input', (e, el) => {
         el.value = el.value.replace(/\D/g, '').slice(0, 6);
-        if (el.value.length === 6 && _preAuthToken) {
-            query('#loginChallengeForm')?.requestSubmit();
-        }
+        if (el.value.length === 6 && _preAuthToken) _advanceChallenge();
     });
 
-    // ── Step 1: username + password ───────────────────────────────────────────
+    // Step 1: credentials
     on('#loginForm', 'submit', async (e) => {
         e.preventDefault();
         _clearErr();
-
-        const username = query('#username')?.value?.trim() || '';
-        const password = query('#password')?.value || '';
+        const username = ($('#username')?.value || '').trim();
+        const password = $('#password')?.value || '';
         if (!username || !password) { _err('Username and password are required'); return; }
-
-        const btn = query('#loginForm [type="submit"]');
+        const btn = $('#loginForm [type="submit"]');
         if (btn) { btn.disabled = true; btn.textContent = 'Signing in…'; }
-
         try {
             const result = await login(username, password);
-
+            if (btn) { btn.disabled = false; btn.textContent = 'Sign In'; }
             if (result.challenge) {
-                // 202 — need to solve challenges
                 _preAuthToken = result.token;
-                _requirements = result.requirements;
-                _pendingUser  = username;
-                if (btn) { btn.disabled = false; btn.textContent = 'Sign In'; }
-                _showChallenge(_requirements);
+                _requirements = result.requirements || [];
+                _solved       = {};
+                _stepIdx      = 0;
+                if (_requirements.length === 0) {
+                    // No challenges but got 202 — shouldn't happen, treat as error
+                    _err('Unexpected server response'); return;
+                }
+                _renderChallengeStep();
             } else {
-                // 200 — full token, done
-                if (btn) { btn.disabled = false; btn.textContent = 'Sign In'; }
                 _onSuccess(result.token, result.expires);
             }
         } catch (err) {
@@ -162,55 +205,28 @@ export function initLogin() {
         }
     });
 
-    // ── Step 2: challenge (keeper passphrase + TOTP) ──────────────────────────
+    // Step 2: challenge wizard Next/Verify
     on('#loginChallengeForm', 'submit', async (e) => {
         e.preventDefault();
-        _clearErr();
-        if (!_preAuthToken) { _loginReset(); return; }
-
-        const keeperPass = query('#keeperPassphraseInput')?.value || '';
-        const totpCode   = query('#totp')?.value?.trim() || '';
-
-        // Validate required fields
-        if (_requirements.includes('keeper_unlock') && !keeperPass) {
-            _err('Keeper passphrase is required'); return;
-        }
-        if (_requirements.includes('totp') && totpCode.length !== 6) {
-            _err('Enter the 6-digit authenticator code'); return;
-        }
-
-        const btn = query('#loginChallengeForm [type="submit"]');
-        if (btn) { btn.disabled = true; btn.textContent = 'Verifying…'; }
-
-        try {
-            const result = await loginChallenge(_preAuthToken, {
-                keeper_passphrase: keeperPass,
-                totp:              totpCode,
-            });
-            _preAuthToken = null; // wipe from memory
-            if (btn) { btn.disabled = false; btn.textContent = 'Verify'; }
-            _onSuccess(result.token, result.expires);
-        } catch (err) {
-            if (btn) { btn.disabled = false; btn.textContent = 'Verify'; }
-            _err(err.message || 'Verification failed');
-        }
+        await _advanceChallenge();
     });
 
-    // Back button on challenge step
+    // Back — go to previous step or back to creds
     on('#loginChallengeBack', 'click', () => {
-        _preAuthToken = null;
-        _requirements = [];
-        _loginReset();
-        requestAnimationFrame(() => query('#username')?.focus());
+        if (_stepIdx > 0) {
+            _stepIdx--;
+            _renderChallengeStep();
+        } else {
+            _preAuthToken = null;
+            _loginReset();
+            requestAnimationFrame(() => $('#username')?.focus());
+        }
     });
 
-    // Close → reset
-    listen('modal:close', ({ id }) => {
-        if (id === 'loginModal') _loginReset();
-    });
+    listen('modal:close', ({ id }) => { if (id === 'loginModal') _loginReset(); });
 }
 
-function _onSuccess(token, expires) {
+function _onSuccess(token) {
     setCredentials('jwt', token);
     store.set('auth.isLoggedIn', true);
     emit('auth:login:success', { token });

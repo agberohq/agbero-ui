@@ -22,7 +22,7 @@ export function startMetricsPolling(store) {
 
             store.set('sys.isOffline', false);
 
-            // ── System stats ────────────────────────────────────────────────
+            // System stats
             const sys = data.system || {};
             store.set('sys.cpu',        sys.cpu_percent   ?? 0);
             store.set('sys.memRss',     sys.mem_rss       ?? 0);
@@ -32,7 +32,7 @@ export function startMetricsPolling(store) {
             store.set('sys.memUsed',    sys.mem_used      ?? 0);
             store.set('sys.memTotalOs', sys.mem_total_os  ?? 0);
 
-            // ── Aggregate totals from hosts map ─────────────────────────────
+            // Aggregate totals from hosts map
             // /uptime global only has p99 aggregates — everything else must
             // be computed here.
             let totalReqs     = 0;
@@ -56,7 +56,7 @@ export function startMetricsPolling(store) {
                 }
             }
 
-            // ── RPS (derived from delta between polls) ───────────────────────
+            // RPS (derived from delta between polls)
             const now     = Date.now();
             const diffSec = (now - lastReqTime) / MILLISECONDS_IN_SEC;
             const rps     = (lastReqTotal > 0 && diffSec > 0 && totalReqs > lastReqTotal)
@@ -65,7 +65,7 @@ export function startMetricsPolling(store) {
             lastReqTotal = totalReqs;
             lastReqTime  = now;
 
-            // ── Apdex proxy: 1 - (p99_ms / 1000), clamped 0–1 ──────────────
+            // Apdex proxy: 1 - (p99_ms / 1000), clamped 0–1
             const p99   = data.global?.avg_p99_ms || 0;
             const apdex = Math.max(0, Math.min(1, 1 - p99 / 1000));
 
@@ -80,11 +80,11 @@ export function startMetricsPolling(store) {
             const errRate = totalReqs > 0 ? (totalErrors / totalReqs) : 0;
             store.set('stats.uptime', ((1 - errRate) * 100).toFixed(1) + '%');
 
-            // ── hostsData — hosts map for hosts.html and drawers ─────────────
+            // hostsData — hosts map for hosts.html and drawers
             // hosts.html reads this directly; no separate fetch needed there
             store.set('hostsData', { stats: hosts });
 
-            // ── Sparkline ring buffers — per-host rolling 30-point window ────
+            // Sparkline ring buffers — per-host rolling 30-point window
             // Accumulates RPS delta and avg p99 per host for inline sparklines.
             // client-side only — no backend change needed.
             const now30 = Date.now();
@@ -119,7 +119,7 @@ export function startMetricsPolling(store) {
                 });
             }
 
-            // ── Response time history for dashboard chart ────────────────────
+            // Response time history for dashboard chart
             const history = store.get('metricsHistory') || { all: [], http: [], tcp: [] };
             history.all.push(data.global?.avg_p99_ms  ?? 0);
             history.http.push(data.global?.http_p99_ms ?? 0);
@@ -130,7 +130,7 @@ export function startMetricsPolling(store) {
             }
             store.set('metricsHistory', history);
 
-            // ── Git state ────────────────────────────────────────────────────
+            // Git state
             if (data.git) store.set('gitStats', data.git);
 
             emit('metrics:updated', {

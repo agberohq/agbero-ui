@@ -85,7 +85,7 @@
     let pollTimer     = null;
     let isAllExpanded = false;
 
-    // ── Log parsing ────────────────────────────────────────────────────────────
+    // Log parsing
 
     function parseEntry(l) {
         let lvl = 'INFO', msg = '', ts = '', fields = {};
@@ -116,7 +116,7 @@
         return { lvl, ts, full, fields };
     }
 
-    // ── Render ─────────────────────────────────────────────────────────────────
+    // Render
 
     function renderLogs() {
         const el = query('#logsList');
@@ -160,7 +160,7 @@
         }).join('');
     }
 
-    // ── Fetch ──────────────────────────────────────────────────────────────────
+    // Fetch
 
     async function fetchAndRender() {
         if (paused) return;
@@ -172,7 +172,7 @@
         }
     }
 
-    // ── Export — clean JSON array, jq-compatible ───────────────────────────────
+    // Export — clean JSON array, jq-compatible
 
     async function exportLogs() {
         const btn   = query('#logsExportBtn');
@@ -199,7 +199,7 @@
         ui.btn.done(btn, '✓');
     }
 
-    // ── Boot ───────────────────────────────────────────────────────────────────
+    // Boot
 
     queryAll('.chip').forEach(c => c.classList.remove('active'));
     const activeChip = query(`.chip[data-level="${filter}"]`);
@@ -208,7 +208,7 @@
     fetchAndRender();
     pollTimer = setInterval(fetchAndRender, 2000);
 
-    // ── Events ─────────────────────────────────────────────────────────────────
+    // Events
 
     on('#logsPauseBtn', 'click', (e, btn) => {
         paused = !paused;

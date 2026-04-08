@@ -37,8 +37,8 @@ export async function loadConfigData() {
 
     const parsedCerts = parseCertificates(certs);
     store.set('certificates',  parsedCerts);
-    store.set('certs.active',   parsedCerts.filter(c => c.daysLeft > 0).length);
-    store.set('certs.expiring', parsedCerts.filter(c => c.daysLeft > 0 && c.daysLeft < 7).length);
+    store.set('certs.active',   parsedCerts.filter(c => c.days_left > 0).length);
+    store.set('certs.expiring', parsedCerts.filter(c => c.days_left > 0 && c.days_left < 7).length);
 
     if (uptime) {
         store.set('lastUptime', uptime);

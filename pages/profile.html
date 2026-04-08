@@ -119,14 +119,14 @@
 <script type="module">
     import { component, on, notify, query, emit } from '../lib/oja.full.esm.js';
     import { store, getCreds, clearCredentials } from '../js/store.js';
-    import { setupTOTP, keeperTOTPSetup, logout }   from '../js/api.js';
+    import { setupTOTP, logout }   from '../js/api.js';
     import { isOn }                         from '../js/utils.js';
 
     let _pendingSecret  = '';
     let _secretRevealed = false;
     let _username       = 'admin';
 
-    // ── Boot ──────────────────────────────────────────────────────────────────
+    // Boot
 
     function boot() {
         const { token } = getCreds();
@@ -189,7 +189,7 @@
 
     boot();
 
-    // ── Revocation section boot ────────────────────────────────────────────────
+    // Revocation section boot
     (function bootRevocation() {
         const { token } = getCreds();
         if (!token) return;
@@ -224,7 +224,7 @@
         }
     });
 
-    // ── Setup ─────────────────────────────────────────────────────────────────
+    // Setup
 
     on('#totpSetupBtn', 'click', async (e, btn) => {
         btn.disabled = true; btn.textContent = 'Generating…';
@@ -268,13 +268,7 @@
 
     on('#totpCancelBtn', 'click', () => { showTOTPState('setup'); _pendingSecret = ''; });
 
-    // ── Reset — uses keeper path so secret IS persisted ───────────────────────
-    // setupTOTP() (POST /api/v1/totp/setup) explicitly warns it does NOT persist
-    // the secret — "use keeper set to make it durable". If we use the non-persisted
-    // path, the next login will fail because the server reads from the config file.
-    // Instead: keeperTOTPSetup(username) stores it in the encrypted keeper under
-    // totp/{username} which the server reads via ss://totp/{username} references.
-
+    // Reset — uses keeper path so secret IS persisted
     on('#totpResetBtn', 'click', () => {
         query('#totpResetConfirm').style.display = '';
     });
@@ -285,30 +279,13 @@
 
     on('#totpResetConfirmBtn', 'click', async (e, btn) => {
         btn.disabled = true; btn.textContent = 'Resetting…';
-
-        // Use keeper path — this persists the secret to the encrypted store
-        const res = await keeperTOTPSetup(_username);
+        const res = await setupTOTP();
         btn.disabled = false; btn.textContent = 'Yes, Reset Now';
-
         if (res?.uri) {
-            // Secret is now stored in keeper as ss://totp/{username}
-            // Server must have the TOTP secret configured as a keeper reference
             _showQR(res);
-            notify.show('New TOTP secret generated and saved to Keeper — scan the QR code', 'success');
-        } else if (res?.error) {
-            notify.show(res.error, 'error');
-            // If keeper is locked or not configured, fall back to the ephemeral setup
-            // and warn the user clearly about the persistence limitation
-            const fallback = await setupTOTP();
-            if (fallback?.uri) {
-                _showQR(fallback);
-                notify.show('⚠️ Keeper unavailable — secret not persisted. Server restart required to apply.', 'warning');
-            } else {
-                notify.show(fallback?.error || 'Reset failed', 'error');
-                query('#totpResetConfirm').style.display = 'none';
-            }
+            notify.show('New TOTP secret generated — scan the QR code and verify it', 'success');
         } else {
-            notify.show('Reset failed — check that Keeper is unlocked', 'error');
+            notify.show(res?.error || 'Reset failed', 'error');
             query('#totpResetConfirm').style.display = 'none';
         }
     });

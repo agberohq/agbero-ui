@@ -61,7 +61,7 @@
 </div>
 
 <script type="module">
-    import { component, on, ui, notify, query } from '../lib/oja.full.esm.js';
+    import { component, on, ui, notify, query, countdown } from '../lib/oja.full.esm.js';
     import { keeperUnlock, keeperLock, keeperList, keeperGet, keeperSet, keeperDelete } from '../js/api.js';
     import { store } from '../js/store.js';
     // Expose store globally for _scheduleAutoLock
@@ -71,13 +71,10 @@
     // Per-key reveal state: key → { timerId }
     const _revealed = new Map();
 
-    // ── Auto-unlock ────────────────────────────────────────────────────
+    // Auto-lock
     // Passphrase held in closure only — never written to storage
-    let _passphrase  = null;
-    let _lockTimer   = null;
-    let _warnTimer   = null;
-    let _timerBarInterval = null;
-    let _lockAt      = 0;
+    let _passphrase   = null;
+    let _autoLockCd   = null; // countdown.start handle for auto-lock
 
     function _parseDuration(s) {
         if (!s) return 0;
@@ -90,60 +87,54 @@
     }
 
     function _scheduleAutoLock(passphrase) {
-        clearTimeout(_lockTimer); clearTimeout(_warnTimer); clearInterval(_timerBarInterval);
-        const cfg   = (window._agberoStore || { get: () => null }).get?.('lastConfig')?.global?.security?.keep?.auto_lock || '30m0s';
+        if (_autoLockCd) { _autoLockCd.stop(); _autoLockCd = null; }
+
+        const cfg     = (window._agberoStore || { get: () => null }).get?.('lastConfig')?.global?.security?.keep?.auto_lock || '30m0s';
         const totalMs = _parseDuration(cfg);
-        _lockAt = Date.now() + totalMs;
+        const expiresAt = Date.now() + totalMs;
         const warnMs  = totalMs - 2 * 60_000;
 
-        // Update timer bar every second
-        _timerBarInterval = setInterval(() => {
-            const left = _lockAt - Date.now();
-            if (left <= 0) { clearInterval(_timerBarInterval); return; }
-            const bar = query('#keeperTimerBar');
-            if (bar) {
-                const m = Math.floor(left / 60000), s = Math.floor((left % 60000) / 1000);
-                bar.querySelector('#keeperTimerText').textContent = `Auto-locks in ${m}m ${s}s`;
-            }
-        }, 1000);
-
-        if (warnMs > 0) {
-            _warnTimer = setTimeout(() => {
-                import('../lib/oja.full.esm.js').then(({ notify }) => {
-                    notify.warn('🔐 Keeper locks in 2 minutes', {
-                        duration: 0, dismissible: true,
-                        action: { label: 'Renew', fn: () => { if (_passphrase) _doUnlock(_passphrase, true); } }
-                    });
+        _autoLockCd = countdown.start(expiresAt, {
+            onTick(msLeft) {
+                const bar = query('#keeperTimerBar');
+                if (!bar) return;
+                const m = Math.floor(msLeft / 60_000);
+                const s = Math.floor((msLeft % 60_000) / 1_000);
+                const textEl = bar.querySelector('#keeperTimerText');
+                if (textEl) textEl.textContent = `Auto-locks in ${m}m ${s}s`;
+            },
+            warn: warnMs > 0 ? warnMs : 0,
+            onWarn() {
+                notify.warn('🔐 Keeper locks in 2 minutes', {
+                    duration: 0, dismissible: true,
+                    action: { label: 'Renew', fn: () => { if (_passphrase) _doUnlock(_passphrase, true); } },
                 });
-            }, warnMs);
-        }
-
-        _lockTimer = setTimeout(async () => {
-            if (_passphrase) {
-                // Silent auto-renew
-                await _doUnlock(_passphrase, true);
-            } else {
-                _doLock();
-            }
-        }, totalMs);
+            },
+            async onExpire() {
+                if (_passphrase) {
+                    await _doUnlock(_passphrase, true);
+                } else {
+                    _doLock();
+                }
+            },
+        });
     }
 
     async function _doUnlock(passphrase, silent = false) {
         _passphrase = passphrase;
         _scheduleAutoLock(passphrase);
         if (!silent) {
-            showUnlocked();  // showUnlocked already calls loadKeys()
+            showUnlocked();
         }
-        // silent renew: keys are still loaded, just no UI transition
     }
 
     function _doLock() {
         _passphrase = null;
-        clearTimeout(_lockTimer); clearTimeout(_warnTimer); clearInterval(_timerBarInterval);
+        if (_autoLockCd) { _autoLockCd.stop(); _autoLockCd = null; }
         showLocked();
     }
 
-    // ── SVG icon constants ────────────────────────────────────────────────────
+    // SVG icon constants
     const _svgCopy    = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>`;
     const _eyeOpen    = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>`;
     const _eyeClosed  = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0112 20c-7 0-11-8-11-8a18.45 18.45 0 015.06-5.94M9.9 4.24A9.12 9.12 0 0112 4c7 0 11 8 11 8a18.5 18.5 0 01-2.16 3.19m-6.72-1.07a3 3 0 11-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>`;
@@ -251,14 +242,14 @@
         else showLocked();
     }
 
-    // ── Boot ──────────────────────────────────────────────────────────────────
+    // Boot
     (async () => {
         const data = await keeperList();
         if (data?.keys !== undefined) showUnlocked();
         else showLocked();
     })();
 
-    // ── Unlock ────────────────────────────────────────────────────────────────
+    // Unlock
     async function doUnlock() {
         const pass  = query('#keeperPassphrase').value.trim();
         const errEl = query('#keeperUnlockError');
@@ -279,7 +270,7 @@
     on('#keeperUnlockBtn',  'click',   doUnlock);
     on('#keeperPassphrase', 'keydown', (e) => { if (e.key === 'Enter') doUnlock(); });
 
-    // ── Lock ──────────────────────────────────────────────────────────────────
+    // Lock
     on('#keeperLockBtn', 'click', async (e, btn) => {
         ui.btn.loading(btn, 'Locking…');
         await keeperLock();
@@ -289,7 +280,7 @@
         notify.show('Keeper locked', 'success');
     });
 
-    // ── Reveal secret value — fetches live from API, auto-obscures after 30s ──
+    // Reveal secret value — fetches live from API, auto-obscures after 30s
     on('[data-action="reveal-secret"]', 'click', async (e, btn) => {
         e.stopPropagation();
         const key     = btn.dataset.key;
@@ -339,7 +330,7 @@
         _revealed.set(key, { timerId });
     });
 
-    // ── Copy ref ──────────────────────────────────────────────────────────────
+    // Copy ref
     on('[data-action="copy-ref"]', 'click', (e, btn) => {
         e.stopPropagation();
         navigator.clipboard?.writeText(btn.dataset.ref)
@@ -347,7 +338,7 @@
             .catch(() => {});
     });
 
-    // ── Copy revealed value ───────────────────────────────────────────────────
+    // Copy revealed value
     on('[data-action="copy-value"]', 'click', (e, btn) => {
         e.stopPropagation();
         const key = btn.dataset.key;
@@ -358,7 +349,7 @@
             .catch(() => {});
     });
 
-    // ── Add ───────────────────────────────────────────────────────────────────
+    // Add
     on('#keeperAddBtn', 'click', () => {
         query('#keeperAddForm').style.display = '';
         query('#keeperNewKey')?.focus();
@@ -395,7 +386,7 @@
         }
     });
 
-    // ── Delete — two-step inline confirm ─────────────────────────────────────
+    // Delete — two-step inline confirm
     on('[data-action="delete-key"]', 'click', async (e, btn) => {
         e.stopPropagation();
         const key = btn.dataset.key;
@@ -430,10 +421,7 @@
     component.onUnmount(() => {
         _revealed.forEach(({ timerId }) => clearTimeout(timerId));
         _revealed.clear();
-        // clear auto-lock timers and wipe passphrase from memory
         _passphrase = null;
-        clearTimeout(_lockTimer);
-        clearTimeout(_warnTimer);
-        clearInterval(_timerBarInterval);
+        if (_autoLockCd) { _autoLockCd.stop(); _autoLockCd = null; }
     });
 </script>

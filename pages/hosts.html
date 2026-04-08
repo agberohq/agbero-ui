@@ -1,24 +1,24 @@
 <div class="page active">
-    <div class="flex-right">
-        <div style="position:relative;flex:1;max-width:340px;">
-            <input type="text" id="hostSearch" class="search-input" placeholder="Search hosts, paths, or backends…" autocomplete="off" style="width:100%;padding-right:28px;">
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:16px;">
+        <div style="position:relative;flex:1;min-width:0;max-width:340px">
+            <input type="text" id="hostSearch" class="search-input" placeholder="Search hosts, paths, or backends…" autocomplete="off" style="width:100%;padding-right:28px;box-sizing:border-box;">
             <button id="hostSearchClear" title="Clear search"
                     style="position:absolute;right:6px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:var(--text-mute);font-size:14px;padding:0;display:none;">✕</button>
         </div>
         <button class="btn primary" id="addHostBtn">+ Host</button>
-        <button class="btn small" id="refreshHostsBtn" style="width:var(--btn-h);padding:0;">⟳</button>
+        <button class="btn small" id="refreshHostsBtn" style="width:32px;height:32px;padding:0;flex-shrink:0;">⟳</button>
     </div>
     <div id="hostsContainer"></div>
     <div id="hostsPager"></div>
 </div>
 
 <script type="module">
-    import { component, on, emit, listen, modal, ui, clipboard, notify, query, queryAll, pagination, Search } from '../lib/oja.full.esm.js';
+    import { component, on, emit, listen, modal, ui, clipboard, notify, query, queryAll, pagination, Search, countdown } from '../lib/oja.full.esm.js';
     import { store } from '../js/store.js';
     import { fetchUptime, fmtNum, addHost, addHostHCL, getHostHCL, deleteHost } from '../js/api.js';
     import { isOn } from '../js/utils.js';
 
-    // ── Helpers ────────────────────────────────────────────────────────────────
+    // Helpers
 
     function healthDot(b, has) {
         if (!has) return { cls: 'warn', title: 'No data' };
@@ -29,7 +29,7 @@
         return { cls: b.alive ? 'info' : 'down', title: b.alive ? 'Unverified' : 'Dead' };
     }
 
-    // ── Row builders ───────────────────────────────────────────────────────────
+    // Row builders
 
     function backendRowHtml(b, cfgB, statBEs, bIdx) {
         const url      = b.url || b.address || cfgB.address || '';
@@ -96,7 +96,7 @@
         if (isOn(r.wasm?.enabled))                t.push('<span class="badge transform">WASM</span>');
         if (isOn(r.rate_limit?.enabled))          t.push('<span class="badge traffic">RATE LIMIT</span>');
         if (isOn(r.cors?.enabled))                t.push('<span class="badge">CORS</span>');
-        if (isOn(r.compression_config?.enabled))  t.push('<span class="badge">GZIP</span>');
+        if (isOn(r.compression?.enabled))  t.push('<span class="badge">GZIP</span>');
         if (isOn(r.firewall?.enabled))             t.push('<span class="badge danger">FIREWALL</span>');
         if (r.allowed_ips?.length)                t.push('<span class="badge warn">IP FILTER</span>');
         if (isOn(r.fallback?.enabled))            t.push('<span class="badge">FALLBACK</span>');
@@ -120,16 +120,17 @@
 
         // TLS badge
         const tlsMode = cfgHost.tls?.mode || '';
-        // F-03: empty string means HTTP-only — same as "none", NOT Auto-TLS
+        // empty string means HTTP-only — same as "none", NOT Auto-TLS
         let tlsText = 'Auto TLS', tlsClass = 'success', tlsTitle = 'Managed by Agbero';
         if (tlsMode === '' || tlsMode === 'none') { tlsClass = 'error';   tlsText = 'No TLS'; tlsTitle = 'HTTP only'; }
         else if (tlsMode.includes('local'))        { tlsClass = 'warning'; tlsText = 'Local TLS'; }
-        const cert = certificates.find(c => c.host === hostname);
-        if (cert?.daysLeft !== undefined) {
-            tlsTitle = `Expires: ${new Date(cert.expiry).toLocaleDateString()} (${cert.daysLeft}d)`;
-            if (cert.daysLeft < 7) {
-                tlsClass = cert.daysLeft < 0 ? 'error' : 'warning';
-                tlsText  = cert.daysLeft < 0 ? 'Expired' : `${cert.daysLeft}d`;
+        const cert = certificates.find(c => c.domain === hostname);
+        if (cert?.days_left !== null && cert?.days_left !== undefined) {
+            const expDate = cert.expires_at ? new Date(cert.expires_at).toLocaleDateString() : '—';
+            tlsTitle = `Expires: ${expDate} (${countdown.daysLabel(cert.days_left)})`;
+            if (cert.days_left < 7) {
+                tlsClass = cert.days_left < 0 ? 'error' : 'warning';
+                tlsText  = countdown.daysLabel(cert.days_left);
             }
         }
 
@@ -221,7 +222,7 @@
         </div>`;
     }
 
-    // ── Pagination ─────────────────────────────────────────────────────────────
+    // Pagination
     const savedPageSize = store.get('hosts.pageSize') || 20;
     const pg = pagination({
         pageSize: savedPageSize,
@@ -230,7 +231,7 @@
     });
     let stopPager = null;
 
-    // ── Search index ───────────────────────────────────────────────────────────
+    // Search index
     let _searchIndex = null;
 
     function _buildSearchIndex() {
@@ -254,7 +255,7 @@
         return _searchIndex.search(term).map(r => [r.doc.hostname, hostsStats[r.doc.hostname]]).filter(([,v]) => v !== undefined);
     }
 
-    // ── Render ─────────────────────────────────────────────────────────────────
+    // Render
     function renderPage() {
         const configHosts  = (store.get('lastConfig') || {}).hosts || {};
         const certificates = store.get('certificates') || [];
@@ -328,7 +329,7 @@
         syncList();
     }
 
-    // ── Boot ───────────────────────────────────────────────────────────────────
+    // Boot
     const savedTerm = store.get('searchTerm') || '';
     const searchInput = query('#hostSearch');
     if (searchInput && savedTerm) searchInput.value = savedTerm;
@@ -341,7 +342,7 @@
     const pagerEl = query('#hostsPager');
     if (pagerEl) stopPager = pg.mount(pagerEl);
 
-    // ── Events ─────────────────────────────────────────────────────────────────
+    // Events
     let searchTimeout;
     on('#hostSearch', 'input', (e, el) => {
         clearTimeout(searchTimeout);
