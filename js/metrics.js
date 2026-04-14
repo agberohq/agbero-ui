@@ -120,12 +120,17 @@ export function startMetricsPolling(store) {
             }
 
             // Response time history for dashboard chart
-            const history = store.get('metricsHistory') || { all: [], http: [], tcp: [] };
+            const history = store.get('metricsHistory') || {};
+            if (!history.all)  history.all  = [];
+            if (!history.http) history.http = [];
+            if (!history.tcp)  history.tcp  = [];
+            if (!history.udp)  history.udp  = [];
             history.all.push(data.global?.avg_p99_ms  ?? 0);
             history.http.push(data.global?.http_p99_ms ?? 0);
             history.tcp.push(data.global?.tcp_p99_ms  ?? 0);
+            history.udp.push(data.global?.udp_p99_ms  ?? 0);
 
-            for (const k of ['all', 'http', 'tcp']) {
+            for (const k of ['all', 'http', 'tcp', 'udp']) {
                 if (history[k].length > MAX_HISTORY_POINTS) history[k].shift();
             }
             store.set('metricsHistory', history);

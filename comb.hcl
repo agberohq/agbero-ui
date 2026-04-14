@@ -1,5 +1,5 @@
 recursive = true
-output_file = "oja.txt"
+output_file = "agbero-ui.txt"
 extensions = [".css",".js",".html",".json"]
 exclude_dirs {
   items = ["lab", "lib", "bin", "dist","node_modules"]
