@@ -169,10 +169,10 @@ export async function getHostHCL(domain) {
     return _safe(async () => {
         const res = await getApi().get(
             `/api/v1/discovery/${encodeURIComponent(domain)}?format=hcl`,
-            { headers: { 'Accept': 'application/hcl' }, returnResponse: true }
+            { headers: { 'Accept': 'application/hcl' } }
         );
-        if (!res?.ok) return null;
-        return typeof res.text === 'function' ? res.text() : res;
+        // Oja api.get() with a non-JSON content-type returns the raw text string directly
+        return typeof res === 'string' && res.trim() ? res : null;
     });
 }
 

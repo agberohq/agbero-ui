@@ -1,8 +1,8 @@
 /**
  * pages/config.js — Config page.
- * Phase 5: API server, security/firewall details, rate limit rules,
+ * API server, security/firewall details, rate limit rules,
  *          gossip/cluster, logging backends.
- * Phase 6: collapse/accordion via <details>, collapse from oja not needed
+ * collapse/accordion via <details>, collapse from oja not needed
  *          since native <details> provides the pattern cleanly.
  */
 export default async function({ find, on, onUnmount, ready, inject }) {
@@ -100,7 +100,6 @@ export default async function({ find, on, onUnmount, ready, inject }) {
         ].map(([l, v]) => detailItem(l, v)).join('');
     }
 
-    // Phase 5 #32 — API server
     function renderApiSection(g) {
         const api  = g?.api;
         const sect = find('#configApiSection');
@@ -118,7 +117,6 @@ export default async function({ find, on, onUnmount, ready, inject }) {
         ].map(([l, v]) => detailItem(l, v)).join('');
     }
 
-    // Phase 5 #33 — Security & Firewall
     function renderSecuritySection(g) {
         const sec = g?.security;
         const fw  = sec?.firewall;
@@ -175,7 +173,6 @@ export default async function({ find, on, onUnmount, ready, inject }) {
         }
     }
 
-    // Phase 5 #34 — Rate limit rules table
     function renderRateLimitSection(g) {
         const el  = find('#configRateLimitDetails');
         const rl  = g?.rateLimits;
@@ -216,7 +213,6 @@ export default async function({ find, on, onUnmount, ready, inject }) {
         el.innerHTML = `<div class="config-details-grid">${summary}</div>${rulesHtml}`;
     }
 
-    // Phase 5 #35 — Gossip / Cluster
     function renderGossipSection(g) {
         const el     = find('#configGossipDetails');
         const gossip = g?.gossip;
@@ -236,7 +232,6 @@ export default async function({ find, on, onUnmount, ready, inject }) {
         ].map(([l, v]) => detailItem(l, v)).join('');
     }
 
-    // Phase 5 #36 — Logging
     function renderLoggingSection(g) {
         const el  = find('#configLoggingDetails');
         const log = g?.logging;

@@ -1,6 +1,6 @@
 /**
  * pages/firewall.js — Firewall page.
- * Phase 7 #47: display global firewall mode, inspect settings, action definitions.
+ * display global firewall mode, inspect settings, action definitions.
  */
 import { listen, notify, countdown } from '../lib/oja.full.esm.js';
 
@@ -13,7 +13,6 @@ export default async function({ find, on, onUnmount, ready, inject }) {
     let _confirmIp = null;
     const _countdownHandles = new Map();
 
-    // Phase 7 #47 — Render global firewall config from lastConfig
     function renderGlobalStatus() {
         const cfg = store.get('lastConfig');
         const fw  = cfg?.global?.security?.firewall;

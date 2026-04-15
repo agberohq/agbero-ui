@@ -351,7 +351,7 @@ class RouteGraph {
     }
 
     getLinkWidth(d) {
-        // Phase 7 #51 — thickness proportional to traffic weight
+
         const type = d.source?.type || d.source;
         if (type === "root") return 2;
         if (type === "host") return 1.5;

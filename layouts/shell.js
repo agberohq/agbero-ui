@@ -365,7 +365,6 @@ export default async function({ find, findAll, on, provide, onUnmount, signal, d
 
     on('#strictDeleteCancelBtn', 'click', () => modal.closeAll());
 
-    // Sys bar expand/collapse (Bug 6)
     on('#sysBar', 'click', () => {
         const bar  = find('#sysBar');
         const hint = find('#sysBar .sys-bar-expand-hint');

@@ -106,7 +106,7 @@ export default async function({ find, findAll, on, onUnmount, ready, inject }) {
     on('#logsExportBtn',  'click', exportLogs);
     on('#logsClearBtn',   'click', () => { logs = []; renderLogs(); });
     on('#logsTailSelect', 'change', fetchAndRender);
-    // Phase 7 #50 — search
+
     on('#logsSearch', 'input', (e, inp) => {
         searchTerm = inp.value.trim();
         const clearBtn = find('#logsSearchClear');

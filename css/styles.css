@@ -1703,7 +1703,6 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); }
 .config-header h2 { margin: 0; font-size: 17px; font-weight: 400; }
 .config-actions { display: flex; gap: 8px; }
 
-/* Phase 6 #40 — collapse/accordion via native <details> */
 details.config-collapse {
     margin-bottom: 12px;
     border: 1px solid var(--border);
@@ -1797,7 +1796,6 @@ details.config-collapse > pre { padding: 0 14px 14px; }
 .graph-actions { display: flex; gap: 8px; }
 #graphContainer { flex: 1; overflow: hidden; background: var(--bg); position: relative; }
 
-/* Graph node tooltip (Bug 4 fix) */
 .graph-node-tooltip {
     position: absolute;
     pointer-events: none;
@@ -3077,8 +3075,6 @@ textarea.wz-input { height: auto; min-height: 80px; }
     }
 }
 
-/* Phase 3 additions */
-
 /* Tristate toggle (On / Off / Default) — used for expect.Toggle fields */
 .wz-tristate {
     display: inline-flex;
@@ -3139,6 +3135,20 @@ textarea.wz-input { height: auto; min-height: 80px; }
     transition: opacity 0.1s;
 }
 .host-spark-bar:hover .spark-seg { opacity: 1 !important; }
+
+.btn-kebab {
+    background: none;
+    border: none;
+    color: var(--text-mute);
+    font-size: 18px;
+    line-height: 1;
+    padding: 2px 6px;
+    cursor: pointer;
+    border-radius: 4px;
+    transition: color .15s, background .15s;
+    flex-shrink: 0;
+}
+.btn-kebab:hover { color: var(--fg); background: var(--hover-bg); }
 
 /* Host card action area additions */
 .host-header-divider {
