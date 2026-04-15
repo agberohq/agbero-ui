@@ -3,7 +3,7 @@
  * Mounted via layout.apply('#shell', 'layouts/shell.html', 'layouts/shell.js').
  * Receives scope: { find, findAll, on, off, provide, onUnmount, onReady, signal, ready }
  */
-import { modal, emit, listen, auth, ui, query, queryAll, notify, collapse } from '../lib/oja.full.esm.js';
+import { modal, emit, listen, auth, ui, query, queryAll, notify, collapse, diffLines, renderDiff } from '../lib/oja.full.esm.js';
 import { storeLocal } from '../js/store.js';
 import { store, getHost, setHost } from '../js/store.js';
 import { formatHCL, validateHCL } from '../js/hcl.js';
@@ -119,8 +119,8 @@ export default async function({ find, findAll, on, provide, onUnmount, signal, d
                 </div>
                 <div class="node-row-actions">
                     ${isActive
-                        ? '<span class="badge success" style="font-size:10px;">active</span>'
-                        : `<button class="btn small" data-action="switch-node" data-url="${n.url}">Switch</button>`}
+                ? '<span class="badge success" style="font-size:10px;">active</span>'
+                : `<button class="btn small" data-action="switch-node" data-url="${n.url}">Switch</button>`}
                     <button class="btn small" data-action="remove-node" data-url="${n.url}" style="color:var(--danger);border-color:rgba(255,59,48,0.3);">✕</button>
                 </div>
             </div>`;
@@ -300,35 +300,104 @@ export default async function({ find, findAll, on, provide, onUnmount, signal, d
     checkLatency();
 
     // HCL Host editor
-    const unsubHclOpen = listen('host:open-edit-hcl', async ({ domain, hcl }) => {
+    let _hclOriginal = '';
+    let _hclDomain   = '';
+
+    function _showEditView() {
+        const ev = find('#hclEditView');
+        const dv = find('#hclDiffView');
+        if (ev) ev.style.display = '';
+        if (dv) dv.style.display = 'none';
+        const e = find('#hclEditorError');
+        if (e) e.style.display = 'none';
+    }
+
+    function _showDiffView(hunks) {
+        const body    = find('#hclDiffBody');
+        const stats   = find('#hclDiffStats');
+        const title   = find('#hclDiffTitle');
+        const added   = hunks.filter(h => h.type === 'add').length;
+        const removed = hunks.filter(h => h.type === 'remove').length;
+        if (title) title.textContent = _hclDomain;
+        if (stats) stats.textContent = `+${added} added · −${removed} removed`;
+        if (body)  body.innerHTML    = renderDiff(hunks, { context: 4 });
+        find('#hclEditView').style.display = 'none';
+        find('#hclDiffView').style.display = 'flex';
+        const de = find('#hclDiffError');
+        if (de) de.style.display = 'none';
+    }
+
+    const unsubHclOpen = listen('host:open-edit-hcl', ({ domain, hcl }) => {
+        _hclOriginal = hcl || '';
+        _hclDomain   = domain;
         const titleEl = find('#hclEditorTitle');
         const ta      = find('#hclEditorTextarea');
-        const errEl   = find('#hclEditorError');
         if (titleEl) titleEl.textContent = domain;
         if (ta)      ta.value = hcl || '';
-        if (errEl)   errEl.style.display = 'none';
-        if (find('#hclSaveBtn')) find('#hclSaveBtn').dataset.hostname = domain;
+        _showEditView();
         modal.open('hclEditorModal');
+        requestAnimationFrame(() => ta?.focus());
     });
 
-    on('#hclSaveBtn', 'click', async (e, btn) => {
-        const domain = btn.dataset.hostname;
-        const hcl    = find('#hclEditorTextarea')?.value || '';
-        const errEl  = find('#hclEditorError');
+    on('#hclEditorTextarea', 'keydown', (e, ta) => {
+        if (e.key !== 'Tab') return;
+        e.preventDefault();
+        const s = ta.selectionStart, end = ta.selectionEnd;
+        ta.value = ta.value.slice(0, s) + '  ' + ta.value.slice(end);
+        ta.selectionStart = ta.selectionEnd = s + 2;
+    });
+
+    on('#formatHostJsonBtn', 'click', () => {
+        const ta    = find('#hclEditorTextarea');
+        const errEl = find('#hclEditorError');
+        if (!ta) return;
+        try {
+            ta.value = formatHCL(ta.value);
+            if (errEl) errEl.style.display = 'none';
+        } catch (err) {
+            if (errEl) { errEl.textContent = 'Format failed: ' + (err.message || err); errEl.style.display = 'block'; }
+        }
+    });
+
+    on('#hclReviewBtn', 'click', () => {
+        const ta    = find('#hclEditorTextarea');
+        const errEl = find('#hclEditorError');
+        const edited = ta?.value || '';
+        if (errEl) errEl.style.display = 'none';
+        const valErr = validateHCL(edited);
+        if (valErr) {
+            if (errEl) { errEl.textContent = 'HCL error: ' + valErr; errEl.style.display = 'block'; }
+            return;
+        }
+        const hunks = diffLines(_hclOriginal, edited);
+        if (!hunks.some(h => h.type !== 'keep')) {
+            if (errEl) { errEl.textContent = 'No changes detected.'; errEl.style.display = 'block'; }
+            return;
+        }
+        _showDiffView(hunks);
+    });
+
+    on('#hclBackBtn', 'click', () => _showEditView());
+
+    on('#hclConfirmBtn', 'click', async (e, btn) => {
+        const ta     = find('#hclEditorTextarea');
+        const errEl  = find('#hclDiffError');
+        const edited = ta?.value || '';
         if (errEl) errEl.style.display = 'none';
         ui.btn.loading(btn, 'Saving…');
         try {
-            const res = await api.updateHostHCL(domain, hcl);
+            const res = await api.updateHostHCL(_hclDomain, edited);
             if (res?.error) throw new Error(res.error);
-            modal.closeAll(); ui.btn.reset(btn);
-            notify.show(`${domain} updated`, 'success');
-            emit('hosts:refresh'); emit('config:reload');
+            modal.closeAll();
+            ui.btn.reset(btn);
+            notify.show(`${_hclDomain} updated`, 'success');
+            emit('hosts:refresh');
+            emit('config:reload');
         } catch (err) {
             ui.btn.reset(btn);
             if (errEl) { errEl.textContent = err.message || 'Save failed'; errEl.style.display = 'block'; }
         }
     });
-
     // Strict delete modal
     const unsubDelete = listen('app:strict-delete', ({ message, targetText, onConfirm }) => {
         const msgEl     = find('#strictDeleteMessage');
@@ -396,14 +465,14 @@ export default async function({ find, findAll, on, provide, onUnmount, signal, d
                 notify.banner('⏱️ Session expires in 5 minutes', {
                     type: 'warn',
                     action: { label: 'Renew', fn: async () => {
-                        try {
-                            // Refresh endpoint reissues a fresh token
-                            const res = await api.getApi ? null : null; // api is not directly available here
-                            // Signal main.js to renew via event
-                            emit('auth:renew:request');
-                            notify.dismissBanner();
-                        } catch {}
-                    }},
+                            try {
+                                // Refresh endpoint reissues a fresh token
+                                const res = await api.getApi ? null : null; // api is not directly available here
+                                // Signal main.js to renew via event
+                                emit('auth:renew:request');
+                                notify.dismissBanner();
+                            } catch {}
+                        }},
                 });
             }, delayMs);
         } catch {}
