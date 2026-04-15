@@ -2,7 +2,7 @@
  * pages/firewall.js — Firewall page.
  * display global firewall mode, inspect settings, action definitions.
  */
-import { listen, notify, countdown } from '../lib/oja.full.esm.js';
+import { listen, notify, countdown, emit } from '../lib/oja.full.esm.js';
 
 export default async function({ find, on, onUnmount, ready, inject }) {
     const { api, store, oja } = inject('app');
@@ -124,7 +124,7 @@ export default async function({ find, on, onUnmount, ready, inject }) {
         _startCountdowns();
     }
 
-    on('#addRuleBtn', 'click', () => modal.open('ruleModal'));
+    on('#addRuleBtn', 'click', () => emit('firewall:open-rule', {}));
     on('#fwSortSel',  'change', (e, el) => {
         _sortKey = el.value;
         render({ enabled: true, rules: _rules });

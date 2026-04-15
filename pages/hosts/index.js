@@ -82,8 +82,8 @@ export default async function({ find, findAll, on, onUnmount, ready, inject }) {
     const pg = pagination({ pageSize: store.get('hosts.pageSize')||20, pageSizes:[10,20,50,100], onPageChange:(p,size)=>{store.set('hosts.pageSize',size);renderPage();} });
     let stopPager=null, _searchIndex=null;
 
-    function _buildSearchIndex(){const hostsStats=(store.get('hostsData')||{}).stats||{},configHosts=(store.get('lastConfig')||{}).hosts||{};const docs=Object.entries(hostsStats).map(([hostname,hStats])=>{const cfg=configHosts[hostname]||{};return{id:hostname,hostname,domains:(cfg.domains||[hostname]).join(' '),backends:(hStats.routes||[]).flatMap(r=>(r.backends||[]).map(b=>b.url||b.address||'')).join(' '),paths:(hStats.routes||[]).map(r=>r.path||'/').join(' ')};});_searchIndex=new Search(docs,{fields:['hostname','domains','backends','paths'],weights:{hostname:3,domains:2,backends:1,paths:1},fuzzy:true});}
-    function filteredEntries(){const hostsStats=(store.get('hostsData')||{}).stats||{},term=(store.get('searchTerm')||'').trim();if(!term)return Object.entries(hostsStats);if(!_searchIndex)_buildSearchIndex();return _searchIndex.search(term).map(r=>[r.doc.hostname,hostsStats[r.doc.hostname]]).filter(([,v])=>v!==undefined);}
+    function _buildSearchIndex(){const hostsStats=(store.get('hostsData')||{}).stats||{},configHosts=(store.get('lastConfig')||{}).hosts||{};const docs=Object.entries(hostsStats).map(([hostname,hStats])=>{const cfg=configHosts[hostname]||{};return{id:hostname,hostname,domains:(cfg.domains||[hostname]).join(' '),backends:(hStats.routes||[]).flatMap(r=>(r.backends||[]).map(b=>b.url||b.address||'')).join(' '),paths:(hStats.routes||[]).map(r=>r.path||'/').join(' ')};});_searchIndex=new Search(docs,{fields:['hostname','domains','backends','paths'],weights:{hostname:3,domains:2,backends:1,paths:1},fuzzy:false});}
+    function filteredEntries(){const hostsStats=(store.get('hostsData')||{}).stats||{},configHosts=(store.get('lastConfig')||{}).hosts||{},term=(store.get('searchTerm')||'').trim();if(!term)return Object.entries(hostsStats);if(term.length<3){const t=term.toLowerCase();return Object.entries(hostsStats).filter(([h])=>h.toLowerCase().includes(t));}if(!_searchIndex)_buildSearchIndex();return _searchIndex.search(term).map(r=>[r.doc.hostname,hostsStats[r.doc.hostname]]).filter(([,v])=>v!==undefined);}
 
     function renderPage(){const configHosts=(store.get('lastConfig')||{}).hosts||{},certificates=store.get('certificates')||[],containerEl=find('#hostsContainer');if(!containerEl)return;const hostsStats=(store.get('hostsData')||{}).stats||{};if(!Object.keys(hostsStats).length){containerEl.innerHTML=`<div class="empty-state"><span>🔮 No hosts configured</span><span>Add a host in agbero.hcl and restart</span></div>`;pg.updateTotal(0);return;}const all=filteredEntries(),term=(store.get('searchTerm')||'').toLowerCase();if(!all.length){containerEl.innerHTML=`<div class="empty-state"><span>🔍 No hosts matching "${esc(term)}"</span></div>`;pg.updateTotal(0);return;}pg.updateTotal(all.length);containerEl.innerHTML=pg.slice(all).map(([hostname,hStats])=>hostCardHtml(hostname,hStats,configHosts[hostname]||{},term,certificates)).join('');}
 
@@ -118,6 +118,10 @@ export default async function({ find, findAll, on, onUnmount, ready, inject }) {
                     ui.btn.reset(btn);
                     if (!hcl) { notify.show('Could not load HCL — try again', 'error'); return; }
                     emit('host:open-edit-hcl', { domain: h, hcl });
+                }});
+            items.push({ separator: true });
+            items.push({ label: 'Block IP…', icon: '🛡️', action: () => {
+                    emit('firewall:open-rule', { host: h });
                 }});
             items.push({ separator: true });
             items.push({ label: 'Delete', icon: '🗑️', danger: true, action: () => {

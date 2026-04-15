@@ -3,7 +3,7 @@
  * Mounted via layout.apply('#shell', 'layouts/shell.html', 'layouts/shell.js').
  * Receives scope: { find, findAll, on, off, provide, onUnmount, onReady, signal, ready }
  */
-import { modal, emit, listen, auth, ui, query, queryAll, notify, collapse, diffLines, renderDiff } from '../lib/oja.full.esm.js';
+import { modal, emit, listen, auth, ui, query, queryAll, notify, collapse, diffLines, renderDiff, autocomplete } from '../lib/oja.full.esm.js';
 import { storeLocal } from '../js/store.js';
 import { store, getHost, setHost } from '../js/store.js';
 import { formatHCL, validateHCL } from '../js/hcl.js';
@@ -242,6 +242,43 @@ export default async function({ find, findAll, on, provide, onUnmount, signal, d
     on('[data-modal="shortcutsModal"]', 'click', () => modal.closeById('shortcutsModal'));
 
     // Firewall rule form
+    let _fwAutoHandle = null;
+
+    function _openRuleModal({ ip = '', host = '' } = {}) {
+        const ipEl     = find('#ruleIp');
+        const hostEl   = find('#ruleHost');
+        const reasonEl = find('#ruleReason');
+        const pathEl   = find('#rulePath');
+        const durEl    = find('#ruleDuration');
+        const errEl    = find('#ruleError');
+        if (ipEl)     ipEl.value     = ip;
+        if (hostEl)   hostEl.value   = host;
+        if (reasonEl) reasonEl.value = '';
+        if (pathEl)   pathEl.value   = '';
+        if (durEl)    durEl.value    = '0';
+        if (errEl)    errEl.style.display = 'none';
+
+        // Attach host autocomplete from known hosts list
+        if (_fwAutoHandle) { _fwAutoHandle.destroy(); _fwAutoHandle = null; }
+        const hostNames = Object.keys((store.get('lastConfig') || {}).hosts || {});
+        if (hostEl && hostNames.length) {
+            _fwAutoHandle = autocomplete.attach(hostEl, {
+                source:   hostNames,
+                minChars: 1,
+                limit:    10,
+                onSelect: (val) => { hostEl.value = val; },
+            });
+        }
+
+        modal.open('ruleModal');
+        requestAnimationFrame(() => (ip ? find('#ruleReason') : ipEl)?.focus());
+    }
+
+    // Triggered from firewall page button, drawer, or log entries
+    const unsubFwOpen = listen('firewall:open-rule', ({ ip = '', host = '' } = {}) => {
+        _openRuleModal({ ip, host });
+    });
+
     on('#ruleForm', 'submit', async (e) => {
         e.preventDefault();
         const errEl    = find('#ruleError');
@@ -490,7 +527,7 @@ export default async function({ find, findAll, on, provide, onUnmount, signal, d
         clearTimeout(_latencyTimer);
         clearTimeout(_expiryWarnTimer);
         unsubNav(); unsubLogin(); unsubExpired(); unsubIcon();
-        unsubHclOpen(); unsubDelete();
+        unsubHclOpen(); unsubDelete(); unsubFwOpen();
         unsubSessionStart();
     });
 }

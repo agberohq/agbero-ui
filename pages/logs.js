@@ -1,6 +1,8 @@
 /**
  * pages/logs.js — Logs page.
  */
+import { emit } from '../lib/oja.full.esm.js';
+
 export default async function({ find, findAll, on, onUnmount, ready, inject }) {
     const { store, api, oja } = inject('app');
     const { ui } = oja;
@@ -20,10 +22,17 @@ export default async function({ find, findAll, on, onUnmount, ready, inject }) {
         }
         if (ts?.includes('T')) ts = ts.split('T')[1]?.split('.')[0] || ts;
         let full = msg;
+        // Strip port from remote — "[::1]:56893" → "::1", "1.2.3.4:8080" → "1.2.3.4"
+        let rawIp = fields.ip || fields.remote || fields.client_ip || '';
+        if (rawIp.startsWith('[')) rawIp = rawIp.replace(/^\[([^\]]+)\].*$/, '$1');
+        else if (rawIp.includes(':') && rawIp.split(':').length === 2) rawIp = rawIp.split(':')[0];
+        const ip   = rawIp;
+        const host = fields.host || fields.domain || '';
         if (fields.method && fields.path) { full += ` ${fields.method} ${fields.path}`; delete fields.method; delete fields.path; }
         if (fields.status)   { full += ` [${fields.status}]`; delete fields.status; }
         if (fields.duration) { full += ` (${(fields.duration / 1e6).toFixed(2)}ms)`; delete fields.duration; }
-        return { lvl, ts, full, fields };
+        delete fields.ip; delete fields.remote; delete fields.client_ip;
+        return { lvl, ts, full, fields, ip, host };
     }
 
     function renderLogs() {
@@ -46,16 +55,16 @@ export default async function({ find, findAll, on, onUnmount, ready, inject }) {
             return;
         }
         el.innerHTML = filtered.map(l => {
-            const { lvl, ts, full, fields } = parseEntry(l);
+            const { lvl, ts, full, fields, ip, host } = parseEntry(l);
             const color   = lvl === 'ERROR' ? 'var(--danger)' : lvl === 'WARN' ? 'var(--warning)' : 'var(--text-mute)';
             const hasJson = Object.keys(fields).length > 0;
-            // Highlight search term
             const highlightedFull = term
                 ? full.replace(new RegExp(term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi'),
                     m => `<mark style="background:var(--warning);color:#000;border-radius:2px;padding:0 1px;">${m}</mark>`)
                 : full;
+            const ipBadge    = ip ? `<span class="log-ip" data-ip="${ip}" data-host="${host}" style="font-family:var(--font-mono);font-size:10px;color:var(--text-mute);margin-left:6px;padding:1px 4px;border:1px solid var(--border);border-radius:3px;cursor:pointer;" title="Click to block">${ip}</span>` : '';
             const jsonToggle = hasJson ? `<details class="log-details"${isAllExpanded ? ' open' : ''}><summary class="log-json-toggle">{…}</summary><div class="log-json-body"><pre>${JSON.stringify(fields, null, 2)}</pre></div></details>` : '';
-            return `<div class="log-entry"><span class="log-ts">${ts}</span><span class="log-lvl" style="color:${color};">${lvl}</span><span class="log-msg">${highlightedFull} ${jsonToggle}</span></div>`;
+            return `<div class="log-entry" data-ip="${ip}" data-host="${host}"><span class="log-ts">${ts}</span><span class="log-lvl" style="color:${color};">${lvl}</span><span class="log-msg">${highlightedFull}${ipBadge} ${jsonToggle}</span></div>`;
         }).join('');
     }
 
@@ -127,6 +136,26 @@ export default async function({ find, findAll, on, onUnmount, ready, inject }) {
         filter = chip.dataset.level;
         store.set('logFilter', filter);
         renderLogs();
+    });
+
+    // Click IP badge → open firewall rule pre-filled with ip + host
+    on('.log-ip', 'click', (e, el) => {
+        e.stopPropagation();
+        const ip   = el.dataset.ip   || '';
+        const host = el.dataset.host || '';
+        if (ip) emit('firewall:open-rule', { ip, host });
+    });
+
+    // Right-click log row → contextmenu with block option
+    on('.log-entry', 'contextmenu', (e, row) => {
+        const ip   = row.dataset.ip   || '';
+        const host = row.dataset.host || '';
+        if (!ip) return;
+        e.preventDefault();
+        const { clickmenu } = oja;
+        clickmenu.show(e.clientX, e.clientY, [
+            { label: `Block ${ip}`, icon: '🛡️', action: () => emit('firewall:open-rule', { ip, host }) },
+        ]);
     });
 
     onUnmount(() => { if (pollTimer) clearInterval(pollTimer); paused = false; logs = []; });
