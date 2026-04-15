@@ -218,8 +218,8 @@ function gitSection(git, hostname) {
 function serverlessSection(serverless) {
     if (!isOn(serverless?.enabled)) return '';
     const workers = serverless.workers || [];
-    const rests   = serverless.rests   || [];
-    if (!workers.length && !rests.length) return '';
+    const replay  = serverless.replay  || [];  // correct field name
+    if (!workers.length && !replay.length) return '';
 
     let html = '';
 
@@ -237,23 +237,30 @@ function serverlessSection(serverless) {
                         ${w.restart     ? badge('restart: ' + w.restart, '') : ''}
                         ${w.schedule    ? badge('cron: ' + w.schedule, 'warning') : ''}
                         ${w.timeout && w.timeout !== '0s' ? badge('timeout: ' + w.timeout, '') : ''}
+                        ${w.engine      ? badge('engine: ' + w.engine, '') : ''}
+                        ${w.landlock === 'on' || w.landlock === true ? badge('landlock', 'info') : ''}
                     </div>
                 </div>
             </div>`).join('');
     }
 
-    if (rests.length) {
-        html += `<div style="font-size:11px;font-weight:500;color:var(--text-mute);text-transform:uppercase;letter-spacing:.5px;margin:10px 0 6px;">REST Proxies (${rests.length})</div>`;
-        html += rests.map(r => `
+    if (replay.length) {
+        html += `<div style="font-size:11px;font-weight:500;color:var(--text-mute);text-transform:uppercase;letter-spacing:.5px;margin:10px 0 6px;">Replay Proxies (${replay.length})</div>`;
+        html += replay.map(r => `
             <div class="handler-card" style="margin-bottom:6px;">
                 <span class="handler-icon" style="font-size:16px;">🔌</span>
                 <div class="handler-info">
                     <div style="display:flex;align-items:center;gap:6px;">
                         <strong>${r.name}</strong>
-                        ${badge(r.method || 'GET', 'info')}
+                        ${(r.methods||[]).length ? badge((r.methods||[]).join('/'), 'info') : badge('ANY', 'info')}
                     </div>
-                    <span style="font-size:11px;word-break:break-all;"><a href="${r.url}" target="_blank" rel="noopener" style="color:var(--accent);">${r.url}</a></span>
-                    ${r.timeout && r.timeout !== '0s' ? `<span style="font-size:10px;color:var(--text-mute);">timeout: ${r.timeout}</span>` : ''}
+                    ${r.url ? `<span style="font-size:11px;word-break:break-all;"><a href="${r.url}" target="_blank" rel="noopener" style="color:var(--accent);">${r.url}</a></span>` : badge('relay mode', 'warning')}
+                    <div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:4px;">
+                        ${r.timeout && r.timeout !== '0s' ? badge('timeout: ' + r.timeout, '') : ''}
+                        ${isOn(r.forward_query) ? badge('fwd query', '') : ''}
+                        ${isOn(r.strip_headers) ? badge('strip headers', '') : ''}
+                        ${r.referer_mode && r.referer_mode !== 'auto' ? badge('referer: ' + r.referer_mode, '') : ''}
+                    </div>
                 </div>
             </div>`).join('');
     }
@@ -304,12 +311,15 @@ function backendRow(b, cfgB, bStat, hostname, routeIdx, bIdx, type) {
 }
 
 function upstreamsSection(hostname, item, itemStats, routeIdx, type) {
-    const cfgBEs  = item.backends?.servers || [];
-    const statBEs = itemStats?.backends    || [];
+    // Proxy backends are a flat array; route backends are under .servers
+    const cfgBEs  = type === 'proxy'
+        ? (item.backends || [])
+        : (item.backends?.servers || []);
+    const statBEs = itemStats?.backends || [];
     const display = statBEs.length ? statBEs : cfgBEs;
     if (!display.length) return '';
 
-    const strategy  = item.backends?.strategy;
+    const strategy  = item.backends?.strategy || item.strategy;
     const stratLabel = strategy
         ? strategy.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
         : 'Round Robin';
@@ -542,15 +552,29 @@ function rawSection(item) {
 // Main route drawer builder
 
 function buildRouteHTML(hostname, item, itemStats, type, certificates, routeIdx) {
-    // TCP proxy
+    // TCP or UDP proxy
     if (type === 'proxy') {
+        const isUDP = (item.protocol || itemStats?.protocol || '').toLowerCase() === 'udp';
+        const protoLabel = isUDP ? '📡 UDP Proxy' : '📡 TCP Proxy';
+        const proxyPairs = [
+            ['Listen',        `<code>${item.listen}</code>`],
+            ['Strategy',      item.strategy || 'round_robin'],
+            ['SNI',           item.sni ? `<code>${item.sni}</code>` : null],
+            ['Max Conn',      item.max_connections || null],
+            ['Proxy Protocol',item.proxy_protocol ? badge('Enabled', 'info') : null],
+        ];
+        if (isUDP) {
+            proxyPairs.push(
+                ['Matcher',       item.matcher ? badge(item.matcher, 'info') : badge('src_port', '')],
+                ['Session TTL',   item.session_ttl && item.session_ttl !== '0s' ? item.session_ttl : null],
+                ['Max Sessions',  item.max_sessions ? fmtNum(item.max_sessions) : null],
+            );
+            if (itemStats?.active_sessions > 0) {
+                proxyPairs.push(['Active Sessions', badge(fmtNum(itemStats.active_sessions), 'warning')]);
+            }
+        }
         return [
-            section('📡 TCP Proxy', kvGrid([
-                ['Listen',   `<code>${item.listen}</code>`],
-                ['Strategy', item.strategy || 'round_robin'],
-                ['SNI',      item.sni ? `<code>${item.sni}</code>` : null],
-                ['Max Conn', item.max_connections || null],
-            ])),
+            section(protoLabel, kvGrid(proxyPairs)),
             upstreamsSection(hostname, item, itemStats, routeIdx, type),
             rawSection(item),
         ].filter(Boolean).join('');

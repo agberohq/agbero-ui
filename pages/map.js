@@ -1,10 +1,9 @@
 /**
  * pages/map.js — Map / route graph page.
  */
-import { listen, emit } from '../lib/oja.full.esm.js';
-
 export default async function({ find, on, onUnmount, ready, inject }) {
-    const { store, api } = inject('app');
+    const { store, api, oja } = inject('app');
+    const { emit, listen } = oja;
     let graph = null, paused = true, pollTimer = null;
 
     async function loadGraphDeps() {

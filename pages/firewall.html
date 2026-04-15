@@ -1,4 +1,26 @@
 <div class="page active">
+    <!-- Global firewall status bar (Phase 7 #47) -->
+    <div id="fwStatusBar" style="display:none;margin-bottom:16px;padding:10px 14px;background:var(--panel-bg);border:1px solid var(--border);border-radius:8px;">
+        <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;">
+            <div style="display:flex;align-items:center;gap:8px;">
+                <span style="font-size:11px;color:var(--text-mute);text-transform:uppercase;letter-spacing:.4px;">Mode</span>
+                <span id="fwMode" class="badge">—</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:8px;">
+                <span style="font-size:11px;color:var(--text-mute);text-transform:uppercase;letter-spacing:.4px;">Inspect Body</span>
+                <span id="fwInspectBody" class="badge">—</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:8px;">
+                <span style="font-size:11px;color:var(--text-mute);text-transform:uppercase;letter-spacing:.4px;">Default Dynamic</span>
+                <span id="fwDefaultDynamic" class="badge">—</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:8px;">
+                <span style="font-size:11px;color:var(--text-mute);text-transform:uppercase;letter-spacing:.4px;">Default Static</span>
+                <span id="fwDefaultStatic" class="badge">—</span>
+            </div>
+        </div>
+    </div>
+
     <div class="flex-right" style="align-items:center;">
         <div style="display:flex;align-items:center;gap:8px;">
             <span style="font-size:12px;color:var(--text-mute);">Blocked IPs:</span>
@@ -12,6 +34,7 @@
         </select>
         <button class="btn primary" id="addRuleBtn">Block IP</button>
     </div>
+
     <div class="table-responsive">
         <table class="simple-table">
             <thead>

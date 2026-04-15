@@ -1,11 +1,12 @@
 /**
  * pages/profile.js — Profile & Security page.
  */
-import { notify, emit, auth } from '../lib/oja.full.esm.js';
+import { notify } from '../lib/oja.full.esm.js';
 
 export default async function({ find, on, onUnmount, ready, inject }) {
-    const { store, api, utils } = inject('app');
+    const { store, api, utils, oja } = inject('app');
     const { isOn } = utils;
+    const { emit, auth } = oja;
 
     let _pendingSecret = '', _secretRevealed = false, _username = 'admin';
 
@@ -36,11 +37,13 @@ export default async function({ find, on, onUnmount, ready, inject }) {
         const uptime = store.get('lastUptime');
         if (uptime?.system?.uptime) find('#profileSession').textContent = 'Active · ' + uptime.system.uptime;
         find('#profileAuthMethod').textContent = 'Basic Auth + JWT';
-        const cfg = store.get('lastConfig');
+        const cfg  = store.get('lastConfig');
         const totp = cfg?.global?.admin?.totp;
-        const users = totp?.users || [];
-        const hasTotp = isOn(totp?.enabled) && users.some(u => u.username === _username && u.secret);
-        showTOTPState(hasTotp ? 'configured' : 'setup');
+        // totp.enabled tells us if TOTP is configured globally.
+        // We can't tell per-user status from config alone — show "configured" if
+        // global TOTP is enabled (meaning it is in use), otherwise show setup option.
+        const totpGlobalEnabled = isOn(totp?.enabled);
+        showTOTPState(totpGlobalEnabled ? 'configured' : 'setup');
     }
 
     // Revocation boot

@@ -332,10 +332,12 @@ export default async function({ find, findAll, on, provide, onUnmount, signal, d
     // Strict delete modal
     const unsubDelete = listen('app:strict-delete', ({ message, targetText, onConfirm }) => {
         const msgEl     = find('#strictDeleteMessage');
+        const targetEl  = find('#strictDeleteTarget');
         const inputEl   = find('#strictDeleteInput');
         const confirmEl = find('#strictDeleteConfirmBtn');
         const errEl     = find('#strictDeleteError');
         if (msgEl)     msgEl.innerHTML = message || '';
+        if (targetEl)  targetEl.textContent = targetText || '';
         if (inputEl)   { inputEl.value = ''; inputEl.placeholder = targetText || ''; }
         if (confirmEl) confirmEl.dataset.target = targetText || '';
         if (errEl)     errEl.style.display = 'none';
@@ -363,10 +365,64 @@ export default async function({ find, findAll, on, provide, onUnmount, signal, d
 
     on('#strictDeleteCancelBtn', 'click', () => modal.closeAll());
 
+    // Sys bar expand/collapse (Bug 6)
+    on('#sysBar', 'click', () => {
+        const bar  = find('#sysBar');
+        const hint = find('#sysBar .sys-bar-expand-hint');
+        if (!bar) return;
+        const expanded = bar.classList.toggle('sys-bar-expanded');
+        if (hint) hint.textContent = expanded ? '▼' : '▲';
+    });
+
+    // Token expiry warning (Phase 6 #43)
+    // Show a dismissible notify banner 5 minutes before session expires.
+    let _expiryWarnTimer = null;
+    let _expiryWarnFired = false;
+
+    function _scheduleExpiryWarning() {
+        if (_expiryWarnTimer) clearTimeout(_expiryWarnTimer);
+        _expiryWarnFired = false;
+        try {
+            const token = auth.session.tokenSync();
+            if (!token) return;
+            const payload = JSON.parse(atob(token.split('.')[1]));
+            if (!payload.exp) return;
+            const expiresMs  = payload.exp * 1000;
+            const warnAt     = expiresMs - 5 * 60 * 1000;   // 5 min before
+            const delayMs    = warnAt - Date.now();
+            if (delayMs < 0) return; // already past the warn point
+            _expiryWarnTimer = setTimeout(() => {
+                if (_expiryWarnFired) return;
+                _expiryWarnFired = true;
+                notify.banner('⏱️ Session expires in 5 minutes', {
+                    type: 'warn',
+                    action: { label: 'Renew', fn: async () => {
+                        try {
+                            // Refresh endpoint reissues a fresh token
+                            const res = await api.getApi ? null : null; // api is not directly available here
+                            // Signal main.js to renew via event
+                            emit('auth:renew:request');
+                            notify.dismissBanner();
+                        } catch {}
+                    }},
+                });
+            }, delayMs);
+        } catch {}
+    }
+
+    const unsubSessionStart = listen('auth:login:success', () => {
+        _expiryWarnFired = false;
+        _scheduleExpiryWarning();
+    });
+    // Schedule immediately if already logged in
+    _scheduleExpiryWarning();
+
     // Cleanup
     onUnmount(() => {
         clearTimeout(_latencyTimer);
+        clearTimeout(_expiryWarnTimer);
         unsubNav(); unsubLogin(); unsubExpired(); unsubIcon();
         unsubHclOpen(); unsubDelete();
+        unsubSessionStart();
     });
 }

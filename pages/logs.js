@@ -1,15 +1,15 @@
 /**
  * pages/logs.js — Logs page.
  */
-import { ui } from '../lib/oja.full.esm.js';
-
 export default async function({ find, findAll, on, onUnmount, ready, inject }) {
-    const { store, api } = inject('app');
+    const { store, api, oja } = inject('app');
+    const { ui } = oja;
 
     const ICON_PAUSE  = `<rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/>`;
     const ICON_RESUME = `<polygon points="5 3 19 12 5 21 5 3"/>`;
 
     let paused = false, filter = store.get('logFilter') || 'ALL', logs = [], pollTimer = null, isAllExpanded = false;
+    let searchTerm = '';
 
     function parseEntry(l) {
         let lvl = 'INFO', msg = '', ts = '', fields = {};
@@ -29,15 +29,33 @@ export default async function({ find, findAll, on, onUnmount, ready, inject }) {
     function renderLogs() {
         const el = find('#logsList');
         if (!el) return;
-        if (!logs.length) { el.innerHTML = `<div style="color:var(--text-mute);text-align:center;padding:40px;"><span style="display:block;font-size:24px;margin-bottom:10px;">📭</span>No logs yet. Waiting for traffic...</div>`; return; }
-        const filtered = logs.filter(l => filter === 'ALL' || parseEntry(l).lvl === filter);
-        if (!filtered.length) { el.innerHTML = `<div style="color:var(--text-mute);text-align:center;padding:20px;">No ${filter} logs</div>`; return; }
+        if (!logs.length) {
+            el.innerHTML = `<div style="color:var(--text-mute);text-align:center;padding:40px;"><span style="display:block;font-size:24px;margin-bottom:10px;">📭</span>No logs yet. Waiting for traffic...</div>`;
+            return;
+        }
+        // Apply level filter then search filter
+        const term = searchTerm.toLowerCase();
+        const filtered = logs.filter(l => {
+            const { lvl, full } = parseEntry(l);
+            if (filter !== 'ALL' && lvl !== filter) return false;
+            if (term && !full.toLowerCase().includes(term) && !JSON.stringify(l).toLowerCase().includes(term)) return false;
+            return true;
+        });
+        if (!filtered.length) {
+            el.innerHTML = `<div style="color:var(--text-mute);text-align:center;padding:20px;">No ${searchTerm ? `results for "${searchTerm}"` : filter + ' logs'}</div>`;
+            return;
+        }
         el.innerHTML = filtered.map(l => {
             const { lvl, ts, full, fields } = parseEntry(l);
             const color   = lvl === 'ERROR' ? 'var(--danger)' : lvl === 'WARN' ? 'var(--warning)' : 'var(--text-mute)';
             const hasJson = Object.keys(fields).length > 0;
+            // Highlight search term
+            const highlightedFull = term
+                ? full.replace(new RegExp(term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi'),
+                    m => `<mark style="background:var(--warning);color:#000;border-radius:2px;padding:0 1px;">${m}</mark>`)
+                : full;
             const jsonToggle = hasJson ? `<details class="log-details"${isAllExpanded ? ' open' : ''}><summary class="log-json-toggle">{…}</summary><div class="log-json-body"><pre>${JSON.stringify(fields, null, 2)}</pre></div></details>` : '';
-            return `<div class="log-entry"><span class="log-ts">${ts}</span><span class="log-lvl" style="color:${color};">${lvl}</span><span class="log-msg">${full} ${jsonToggle}</span></div>`;
+            return `<div class="log-entry"><span class="log-ts">${ts}</span><span class="log-lvl" style="color:${color};">${lvl}</span><span class="log-msg">${highlightedFull} ${jsonToggle}</span></div>`;
         }).join('');
     }
 
@@ -64,6 +82,16 @@ export default async function({ find, findAll, on, onUnmount, ready, inject }) {
     findAll('.chip').forEach(c => c.classList.remove('active'));
     const activeChip = find(`.chip[data-level="${filter}"]`);
     if (activeChip) activeChip.classList.add('active');
+
+    // Show skeleton on first paint before fetch completes
+    const logsList = find('#logsList');
+    if (logsList && !logs.length) {
+        logsList.innerHTML = `<div class="loading-rows" style="padding:8px 0;">
+            <div class="loading-row"></div><div class="loading-row"></div>
+            <div class="loading-row"></div><div class="loading-row"></div>
+        </div>`;
+    }
+
     fetchAndRender();
     pollTimer = setInterval(fetchAndRender, 2000);
 
@@ -78,6 +106,21 @@ export default async function({ find, findAll, on, onUnmount, ready, inject }) {
     on('#logsExportBtn',  'click', exportLogs);
     on('#logsClearBtn',   'click', () => { logs = []; renderLogs(); });
     on('#logsTailSelect', 'change', fetchAndRender);
+    // Phase 7 #50 — search
+    on('#logsSearch', 'input', (e, inp) => {
+        searchTerm = inp.value.trim();
+        const clearBtn = find('#logsSearchClear');
+        if (clearBtn) clearBtn.style.display = searchTerm ? '' : 'none';
+        renderLogs();
+    });
+    on('#logsSearchClear', 'click', () => {
+        const inp = find('#logsSearch');
+        if (inp) { inp.value = ''; inp.focus(); }
+        searchTerm = '';
+        const clearBtn = find('#logsSearchClear');
+        if (clearBtn) clearBtn.style.display = 'none';
+        renderLogs();
+    });
     on('.chip', 'click', (e, chip) => {
         findAll('.chip').forEach(c => c.classList.remove('active'));
         chip.classList.add('active');

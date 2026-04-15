@@ -1,11 +1,12 @@
 /**
  * pages/cluster.js — Cluster page.
  */
-import { listen, modal } from '../lib/oja.full.esm.js';
+import { listen } from '../lib/oja.full.esm.js';
 
 export default async function({ find, on, onUnmount, ready, inject }) {
-    const { store, api, utils } = inject('app');
+    const { store, api, utils, oja } = inject('app');
     const { fmtNum } = utils;
+    const { modal } = oja;
     let pollTimer = null;
 
     function render(clusterStats) {
@@ -50,8 +51,9 @@ export default async function({ find, on, onUnmount, ready, inject }) {
     const unsub = listen('cluster:updated', ({ clusterStats }) => render(clusterStats));
     on('#addClusterRouteBtn', 'click', () => modal.open('clusterRouteModal'));
 
-    const cached = store.get('hostsData');
-    if (cached) render(cached.cluster);
+    // Boot from cache using dedicated lastCluster key
+    const cached = store.get('lastCluster');
+    if (cached) render(cached);
     refresh();
     pollTimer = setInterval(refresh, 10000);
 

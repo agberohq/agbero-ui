@@ -1,11 +1,10 @@
 /**
  * pages/keeper.js — Keeper secrets page.
  */
-import { notify, ui, countdown } from '../lib/oja.full.esm.js';
-
 export default async function({ find, on, onUnmount, ready, inject }) {
-    const { store, api, utils } = inject('app');
+    const { store, api, utils, oja } = inject('app');
     const { validateKeeperKey, composeKeeperRef, splitKeeperKey, decodeKeeperValue } = utils;
+    const { notify, ui, countdown } = oja;
 
     let _unlocked = false;
     const _revealed = new Map();
@@ -54,25 +53,70 @@ export default async function({ find, on, onUnmount, ready, inject }) {
     }
 
     function renderKeys(keys) {
-        const el = find('#keeperList'); if (!el) return;
-        if (!keys?.length) { el.innerHTML = `<div class="empty-state"><span>🗝️ No secrets yet</span><span>Click <strong>+ Secret</strong> to add your first entry</span></div>`; return; }
-        el.innerHTML = `<div class="host-row" style="overflow:visible;"><table style="width:100%;border-collapse:collapse;"><thead><tr style="border-bottom:1px solid var(--border);">
-            <th style="text-align:left;padding:9px 16px;font-size:11px;color:var(--text-mute);font-weight:500;text-transform:uppercase;letter-spacing:.5px;width:18%;">Namespace</th>
-            <th style="text-align:left;padding:9px 16px;font-size:11px;color:var(--text-mute);font-weight:500;text-transform:uppercase;letter-spacing:.5px;width:22%;">Key / Path</th>
-            <th style="text-align:left;padding:9px 16px;font-size:11px;color:var(--text-mute);font-weight:500;text-transform:uppercase;letter-spacing:.5px;width:28%;">Reference</th>
-            <th style="text-align:left;padding:9px 16px;font-size:11px;color:var(--text-mute);font-weight:500;text-transform:uppercase;letter-spacing:.5px;">Value</th>
-            <th style="width:90px;padding:9px 16px;"></th>
-            </tr></thead><tbody>${keys.map(k => {
-                const { namespace, path } = splitKeeperKey(k);
-                const ref = composeKeeperRef(namespace, path);
+        const el = find('#keeperList');
+        if (!el) return;
+        if (!keys?.length) {
+            el.innerHTML = `<div class="empty-state"><span>🗝️ No secrets yet</span><span>Click <strong>+ Secret</strong> to add your first entry</span></div>`;
+            return;
+        }
+
+        // Group keys by namespace
+        const byNs = new Map();
+        for (const k of keys) {
+            const { namespace, path } = splitKeeperKey(k);
+            if (!byNs.has(namespace)) byNs.set(namespace, []);
+            byNs.get(namespace).push({ k, path });
+        }
+
+        const namespaces = [...byNs.keys()].sort();
+
+        el.innerHTML = namespaces.map(ns => {
+            const entries = byNs.get(ns);
+            const rows = entries.map(({ k, path }) => {
+                const ref = composeKeeperRef(ns, path);
                 return `<tr style="border-bottom:1px solid var(--border);vertical-align:top;" data-key="${k}">
-                    <td style="padding:12px 16px;font-family:var(--font-mono);font-size:12px;">${namespace}</td>
-                    <td style="padding:12px 16px;font-family:var(--font-mono);font-size:12px;word-break:break-all;">${path}</td>
-                    <td style="padding:12px 16px;"><div style="display:flex;align-items:center;gap:5px;"><code style="font-size:11px;background:var(--hover-bg);padding:3px 7px;border-radius:3px;border:1px solid var(--border);color:var(--accent);white-space:nowrap;">${ref}</code><button class="keeper-icon-btn" data-action="copy-ref" data-ref="${ref}" title="Copy reference">${_svgCopy}</button></div></td>
-                    <td style="padding:12px 16px;"><div class="keeper-value-wrap" data-key="${k}" style="display:none;"><textarea class="keeper-value" data-key="${k}" readonly style="width:100%;min-height:38px;max-height:120px;resize:vertical;font-family:var(--font-mono);font-size:11px;color:var(--text-main);background:var(--panel-bg);border:1px solid var(--border);border-radius:4px;padding:6px 8px;line-height:1.5;overflow-y:auto;word-break:break-all;white-space:pre-wrap;cursor:text;outline:none;margin:0;"></textarea><div style="margin-top:4px;text-align:right;"><button class="keeper-icon-btn" data-action="copy-value" data-key="${k}" title="Copy value">${_svgCopy}</button></div></div></td>
-                    <td style="padding:12px 16px;text-align:right;"><div style="display:flex;align-items:center;gap:4px;justify-content:flex-end;"><button class="btn small" data-action="reveal-secret" data-key="${k}" title="Reveal value" style="padding:0;width:var(--btn-h-sm);justify-content:center;">${_eyeOpen}</button><button class="btn small" data-action="delete-key" data-key="${k}" style="color:var(--danger);border-color:rgba(255,59,48,0.4);">Delete</button></div></td>
+                    <td style="padding:10px 14px;font-family:var(--font-mono);font-size:12px;word-break:break-all;">${path}</td>
+                    <td style="padding:10px 14px;">
+                        <div style="display:flex;align-items:center;gap:5px;">
+                            <code style="font-size:11px;background:var(--hover-bg);padding:3px 7px;border-radius:3px;border:1px solid var(--border);color:var(--accent);white-space:nowrap;">${ref}</code>
+                            <button class="keeper-icon-btn" data-action="copy-ref" data-ref="${ref}" title="Copy reference">${_svgCopy}</button>
+                        </div>
+                    </td>
+                    <td style="padding:10px 14px;">
+                        <div class="keeper-value-wrap" data-key="${k}" style="display:none;">
+                            <textarea class="keeper-value" data-key="${k}" readonly style="width:100%;min-height:36px;max-height:100px;resize:vertical;font-family:var(--font-mono);font-size:11px;color:var(--text-main);background:var(--panel-bg);border:1px solid var(--border);border-radius:4px;padding:5px 7px;line-height:1.5;overflow-y:auto;word-break:break-all;white-space:pre-wrap;cursor:text;outline:none;margin:0;"></textarea>
+                            <div style="margin-top:3px;text-align:right;">
+                                <button class="keeper-icon-btn" data-action="copy-value" data-key="${k}" title="Copy value">${_svgCopy}</button>
+                            </div>
+                        </div>
+                    </td>
+                    <td style="padding:10px 14px;text-align:right;white-space:nowrap;">
+                        <div style="display:flex;align-items:center;gap:4px;justify-content:flex-end;">
+                            <button class="btn small" data-action="reveal-secret" data-key="${k}" title="Reveal value" style="padding:0;width:var(--btn-h-sm);justify-content:center;">${_eyeOpen}</button>
+                            <button class="btn small" data-action="delete-key" data-key="${k}" style="color:var(--danger);border-color:rgba(255,59,48,0.4);">Delete</button>
+                        </div>
+                    </td>
                 </tr>`;
-            }).join('')}</tbody></table></div>`;
+            }).join('');
+
+            return `<details class="keeper-ns-group" open>
+                <summary class="keeper-ns-header">
+                    <span class="keeper-ns-label">${ns}</span>
+                    <span class="badge" style="font-family:var(--font-mono);margin-left:8px;">${entries.length}</span>
+                </summary>
+                <table style="width:100%;border-collapse:collapse;">
+                    <thead>
+                        <tr style="border-bottom:1px solid var(--border);">
+                            <th style="text-align:left;padding:7px 14px;font-size:10px;color:var(--text-mute);text-transform:uppercase;letter-spacing:.5px;width:25%;">Key / Path</th>
+                            <th style="text-align:left;padding:7px 14px;font-size:10px;color:var(--text-mute);text-transform:uppercase;letter-spacing:.5px;width:30%;">Reference</th>
+                            <th style="text-align:left;padding:7px 14px;font-size:10px;color:var(--text-mute);text-transform:uppercase;letter-spacing:.5px;">Value</th>
+                            <th style="width:90px;padding:7px 14px;"></th>
+                        </tr>
+                    </thead>
+                    <tbody>${rows}</tbody>
+                </table>
+            </details>`;
+        }).join('');
     }
 
     async function loadKeys() {

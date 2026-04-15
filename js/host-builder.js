@@ -83,9 +83,18 @@ function buildTcpProxy(tcp) {
     if (tcp.strategy?.trim())        proxy.strategy        = tcp.strategy.trim();
     if (tcp.max_connections > 0)     proxy.max_connections = Number(tcp.max_connections);
     if (tcp.proxy_protocol === true) proxy.proxy_protocol  = true;
-    const servers = (tcp.backends || []).filter(b => b?.address?.trim())
+    // UDP-specific fields
+    if (tcp.protocol?.trim())        proxy.protocol        = tcp.protocol.trim();
+    if (tcp.matcher?.trim())         proxy.matcher         = tcp.matcher.trim();
+    if (tcp.session_ttl?.trim())     proxy.session_ttl     = tcp.session_ttl.trim();
+    if (tcp.max_sessions > 0)        proxy.max_sessions    = Number(tcp.max_sessions);
+
+    // backends is a flat array of Server objects — NOT wrapped in {server: ...}
+    const servers = (tcp.backends || [])
+        .filter(b => b?.address?.trim())
         .map(b => ({ address: b.address.trim(), weight: Number(b.weight) || 1 }));
-    if (servers.length) proxy.backends = servers.map(s => ({ server: s }));
+    if (servers.length) proxy.backends = servers;
+
     const hcEnabled = tcp.hc_interval?.trim() || tcp.hc_send?.trim() || tcp.hc_expect?.trim();
     if (hcEnabled) {
         proxy.health_check = { enabled: 'on' };
@@ -181,23 +190,52 @@ function buildBackendBlock(data) {
 
 function buildServerlessBlock(data) {
     const block = { enabled: 'on' };
-    let rests = [];
-    try { const raw = data.serverless_rests; rests = typeof raw === 'string' ? JSON.parse(raw) : (Array.isArray(raw) ? raw : []); } catch { rests = []; }
-    const builtRests = rests.filter(r => r.name?.trim() && r.url?.trim()).map(r => {
-        const entry = { name: r.name.trim(), enabled: 'on', url: r.url.trim(), method: (r.method || 'GET').toUpperCase() };
-        if (r.timeout?.trim()) entry.timeout = r.timeout.trim();
+
+    // Git block for serverless (code source for workers)
+    if (data.serverless_git_enabled) {
+        block.git = { enabled: 'on', url: (data.serverless_git_url || '').trim(), id: (data.serverless_git_id || '').trim() };
+        if (data.serverless_git_branch?.trim()) block.git.branch   = data.serverless_git_branch.trim();
+        if (data.serverless_git_interval?.trim()) block.git.interval = data.serverless_git_interval.trim();
+    }
+
+    // Replay proxies — JSON key is "replay" (not "rests")
+    let replays = [];
+    try {
+        const raw = data.serverless_rests;  // internal draft key keeps "rests" for backwards compat
+        replays = typeof raw === 'string' ? JSON.parse(raw) : (Array.isArray(raw) ? raw : []);
+    } catch { replays = []; }
+    const builtReplay = replays.filter(r => r.name?.trim()).map(r => {
+        const entry = { name: r.name.trim(), enabled: 'on' };
+        if (r.url?.trim()) {
+            entry.url = r.url.trim();
+        } else if ((r.allowed_domains || []).length) {
+            // Relay mode
+            entry.allowed_domains = r.allowed_domains.filter(Boolean);
+        }
+        if ((r.methods || []).length) entry.methods = r.methods;
+        if (r.timeout?.trim())        entry.timeout = r.timeout.trim();
+        if (r.referer_mode)           entry.referer_mode = r.referer_mode;
+        if (r.referer_value?.trim())  entry.referer_value = r.referer_value.trim();
+        if (r.forward_query)          entry.forward_query = 'on';
+        if (r.strip_headers)          entry.strip_headers = 'on';
         const headers = {};
         (r.headers || []).forEach(h => { const k = (h.key || '').trim(), v = (h.value || '').trim(); if (k) headers[k] = v; });
         if (Object.keys(headers).length) entry.headers = headers;
         return entry;
     });
-    if (builtRests.length) block.rests = builtRests;
+    if (builtReplay.length) block.replay = builtReplay;
 
+    // Workers
     let workers = [];
-    try { const raw = data.serverless_workers; workers = typeof raw === 'string' ? JSON.parse(raw) : (Array.isArray(raw) ? raw : []); } catch { workers = []; }
+    try {
+        const raw = data.serverless_workers;
+        workers = typeof raw === 'string' ? JSON.parse(raw) : (Array.isArray(raw) ? raw : []);
+    } catch { workers = []; }
     const builtWorkers = workers.filter(w => w.name?.trim() && w.command?.trim()).map(w => {
         const cmdRaw = w.command.trim();
-        const command = cmdRaw.startsWith('[') ? (() => { try { return JSON.parse(cmdRaw); } catch { return cmdRaw.split(/\s+/); } })() : cmdRaw.split(/\s+/);
+        const command = cmdRaw.startsWith('[')
+            ? (() => { try { return JSON.parse(cmdRaw); } catch { return cmdRaw.split(/\s+/); } })()
+            : cmdRaw.split(/\s+/);
         const entry = { name: w.name.trim(), command };
         if (w.background)       entry.background = true;
         if (w.run_once)         entry.run_once   = true;
@@ -208,6 +246,7 @@ function buildServerlessBlock(data) {
         return entry;
     });
     if (builtWorkers.length) block.workers = builtWorkers;
+
     return block;
 }
 

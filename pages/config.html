@@ -2,21 +2,12 @@
     <div class="config-header">
         <h2 id="configPageTitle">Configuration Overview</h2>
         <div class="config-actions">
-            <button class="btn small config-refresh" id="configRefreshBtn">⟳ Refresh</button>
-            <button class="btn small config-diff" id="configDiffBtn">↔️ Diff</button>
+            <button class="btn small" id="configRefreshBtn">⟳ Refresh</button>
+            <button class="btn small" id="configDiffBtn">↔️ Diff</button>
         </div>
     </div>
 
-    <div class="config-section">
-        <h3>🆔 Server Identity</h3>
-        <div class="config-details-grid">
-            <div class="config-detail-item"><div class="config-detail-label">Node ID</div><div class="config-detail-value" id="configNodeId">—</div></div>
-            <div class="config-detail-item"><div class="config-detail-label">Hostname</div><div class="config-detail-value" id="configHostname">—</div></div>
-            <div class="config-detail-item"><div class="config-detail-label">PID</div><div class="config-detail-value" id="configPid">—</div></div>
-            <div class="config-detail-item"><div class="config-detail-label">Start Time</div><div class="config-detail-value" id="configStartTime">—</div></div>
-        </div>
-    </div>
-
+    <!-- Metric cards row -->
     <div class="config-metrics-grid">
         <div class="metric-card"><div class="metric-label">HTTP Port</div><div class="metric-value" id="configHttpPort">—</div></div>
         <div class="metric-card"><div class="metric-label">HTTPS Port</div><div class="metric-value" id="configHttpsPort">—</div></div>
@@ -28,34 +19,82 @@
         <div class="metric-card"><div class="metric-label">Log Level</div><div class="metric-value" id="configLogLevel">—</div></div>
     </div>
 
-    <div class="config-section">
-        <h3>⚙️ Global Settings</h3>
-        <div class="config-details-grid" id="configGlobalDetails"></div>
-    </div>
+    <!-- Server Identity -->
+    <details class="config-section config-collapse" open>
+        <summary class="config-section-summary">🆔 Server Identity</summary>
+        <div class="config-details-grid">
+            <div class="config-detail-item"><div class="config-detail-label">Node ID</div><div class="config-detail-value" id="configNodeId">—</div></div>
+            <div class="config-detail-item"><div class="config-detail-label">Hostname</div><div class="config-detail-value" id="configHostname">—</div></div>
+            <div class="config-detail-item"><div class="config-detail-label">PID</div><div class="config-detail-value" id="configPid">—</div></div>
+            <div class="config-detail-item"><div class="config-detail-label">Start Time</div><div class="config-detail-value" id="configStartTime">—</div></div>
+        </div>
+    </details>
 
-    <div class="config-section">
-        <h3>🔐 TLS Certificates Summary</h3>
+    <!-- Global Settings -->
+    <details class="config-section config-collapse" open>
+        <summary class="config-section-summary">⚙️ Global Settings</summary>
+        <div class="config-details-grid" id="configGlobalDetails"></div>
+    </details>
+
+    <!-- API Server (Phase 5 #32) — hidden when not configured -->
+    <details class="config-section config-collapse" id="configApiSection" style="display:none;">
+        <summary class="config-section-summary">🔌 API Server</summary>
+        <div class="config-details-grid" id="configApiDetails"></div>
+    </details>
+
+    <!-- Security & Firewall (Phase 5 #33) -->
+    <details class="config-section config-collapse">
+        <summary class="config-section-summary">🛡️ Security &amp; Firewall</summary>
+        <div class="config-details-grid" id="configSecurityDetails"></div>
+        <div id="configFirewallActions" style="margin-top:12px;"></div>
+    </details>
+
+    <!-- Rate Limits (Phase 5 #34) -->
+    <details class="config-section config-collapse">
+        <summary class="config-section-summary">🚦 Rate Limits</summary>
+        <div id="configRateLimitDetails"></div>
+    </details>
+
+    <!-- Gossip / Cluster (Phase 5 #35) -->
+    <details class="config-section config-collapse" id="configGossipSection">
+        <summary class="config-section-summary">🕸️ Gossip &amp; Cluster</summary>
+        <div class="config-details-grid" id="configGossipDetails"></div>
+    </details>
+
+    <!-- Logging (Phase 5 #36) -->
+    <details class="config-section config-collapse">
+        <summary class="config-section-summary">📋 Logging</summary>
+        <div class="config-details-grid" id="configLoggingDetails"></div>
+    </details>
+
+    <!-- TLS Certificates -->
+    <details class="config-section config-collapse" open>
+        <summary class="config-section-summary">🔐 TLS Certificates</summary>
         <div class="config-details-grid" id="configTlsSummary"></div>
         <div class="config-note" id="configTlsNote"></div>
-    </div>
+    </details>
 
-    <div class="config-section">
-        <h3>⏱️ Runtime Configuration</h3>
+    <!-- Runtime -->
+    <details class="config-section config-collapse">
+        <summary class="config-section-summary">⏱️ Runtime</summary>
         <div class="config-details-grid" id="configRuntimeDetails"></div>
-    </div>
+    </details>
 
-    <div class="config-section">
-        <h3>🚩 Enabled Features</h3>
+    <!-- Enabled Features -->
+    <details class="config-section config-collapse" open>
+        <summary class="config-section-summary">🚩 Enabled Features</summary>
         <div class="feature-grid" id="configFeatures"></div>
-    </div>
+    </details>
 
-    <div class="config-section" id="configGitSection" style="display:none;">
-        <h3>🐙 Git Deployments</h3>
+    <!-- Git Deployments -->
+    <details class="config-section config-collapse" id="configGitSection" style="display:none;">
+        <summary class="config-section-summary">🐙 Git Deployments</summary>
         <div class="config-details-grid" id="configGitDetails"></div>
-    </div>
+    </details>
 
-    <div class="config-section">
-        <h3>📊 Hosts Summary</h3>
+    <!-- Hosts Summary -->
+    <details class="config-section config-collapse" open>
+        <summary class="config-section-summary">📊 Hosts Summary</summary>
         <div class="table-responsive">
             <table class="config-hosts-table">
                 <thead><tr><th>Host</th><th>Routes</th><th>Backends</th><th>TLS</th><th>Domains</th></tr></thead>
@@ -63,22 +102,24 @@
             </table>
         </div>
         <div id="configHostsPager"></div>
-    </div>
+    </details>
 
-    <div class="config-section">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
-            <h3 style="margin:0;font-size:14px;font-weight:500;color:var(--text-main);">Global Configuration</h3>
-            <div style="display:flex;gap:6px;align-items:center;">
+    <!-- Raw Global Config -->
+    <details class="config-section config-collapse">
+        <summary class="config-section-summary">
+            <span>{ } Raw Global Config</span>
+            <span class="config-section-actions" onclick="event.stopPropagation()">
                 <button class="btn small" id="configCopyBtn">Copy</button>
                 <button class="btn small" id="configExpandBtn">Expand</button>
-            </div>
-        </div>
-        <div id="configFormatTabs" style="margin-bottom:10px;"></div>
+            </span>
+        </summary>
+        <div id="configFormatTabs" style="margin:10px 0 6px;"></div>
         <pre class="code-box" id="configContent" style="max-height:360px;overflow:auto;font-family:var(--font-mono);font-size:12px;line-height:1.6;margin:0;"></pre>
-    </div>
+    </details>
 
-    <div class="config-section" id="configDiffSection" style="display:none;">
-        <h3>↔️ Configuration Changes</h3>
+    <!-- Diff -->
+    <details class="config-section config-collapse" id="configDiffSection" style="display:none;">
+        <summary class="config-section-summary">↔️ Configuration Changes</summary>
         <div class="code-box diff-box" id="configDiff"></div>
-    </div>
+    </details>
 </div>

@@ -79,8 +79,8 @@
 <!-- SYSTEM STATS BAR -->
 <div class="sys-bar" id="sysBar" title="Click to expand system stats" style="cursor:pointer;">
     <div class="sys-bar-left">
-        <span class="sys-item" title="Memory RSS">rss <span data-oja-bind="sys.memRss" data-oja-transform="formatBytes">—</span></span>
-        <span class="sys-item hide-mobile" title="Memory Allocated">alloc <span data-oja-bind="sys.memAlloc" data-oja-transform="formatBytes">—</span></span>
+        <span class="sys-item" title="Go Heap (HeapSys)">heap <span data-oja-bind="sys.memRss" data-oja-transform="formatBytes">—</span></span>
+        <span class="sys-item hide-mobile" title="Go Memory Allocated">alloc <span data-oja-bind="sys.memAlloc" data-oja-transform="formatBytes">—</span></span>
         <span class="sys-divider hide-mobile">·</span>
         <span class="sys-item hide-mobile" title="Goroutines">goroutines <span data-oja-bind="sys.goroutines" data-oja-transform="fmtNum">—</span></span>
         <span class="sys-divider">·</span>
@@ -218,36 +218,17 @@
 </div>
 
 
-<!-- Cert detail modal -->
-<div class="modal-overlay" id="certDetailModal">
-    <div class="modal" style="max-width:420px;">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;">
-            <h3 style="margin:0;font-size:14px;" id="certDetailTitle">Certificate</h3>
-            <button class="btn small close-modal">✕</button>
-        </div>
-        <div id="certDetailBody" class="detail-grid"></div>
-    </div>
-</div>
-
-<!-- Git deploy detail modal -->
-<div class="modal-overlay" id="gitDetailModal">
-    <div class="modal" style="max-width:420px;">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;">
-            <h3 style="margin:0;font-size:14px;" id="gitDetailTitle">Git Deploy</h3>
-            <button class="btn small close-modal">✕</button>
-        </div>
-        <div id="gitDetailBody" class="detail-grid"></div>
-    </div>
-</div>
+<!-- certDetailModal and gitDetailModal live in dashboard.html — only used from that page -->
 
 <div class="modal-overlay" id="ruleModal">
     <div class="modal">
         <h3>Firewall Rule</h3>
         <form id="ruleForm">
-            <input type="text" id="fwIp"       placeholder="IP Address or CIDR" required>
-            <input type="text" id="fwReason"   placeholder="Reason (e.g. Abuse)" required>
-            <input type="text" id="fwPath"     placeholder="Path (Optional, e.g. /admin)">
-            <select id="fwDuration">
+            <input type="text" id="ruleIp"       placeholder="IP Address or CIDR" required>
+            <input type="text" id="ruleReason"   placeholder="Reason (e.g. Abuse)" required>
+            <input type="text" id="ruleHost"     placeholder="Host (Optional, e.g. api.example.com)">
+            <input type="text" id="rulePath"     placeholder="Path (Optional, e.g. /admin)">
+            <select id="ruleDuration">
                 <option value="0">Permanent</option>
                 <option value="3600">1 Hour</option>
                 <option value="10800">3 Hours</option>
@@ -267,21 +248,21 @@
         <h3>Broadcast Dynamic Route</h3>
         <p style="font-size:11px;color:var(--text-mute);margin-bottom:15px;">Inject an ephemeral routing rule into the cluster gossip mesh.</p>
         <form id="clusterRouteForm">
-            <input type="text"   id="crHost"   placeholder="Hostname (e.g. api.example.com)" required>
-            <input type="text"   id="crPath"   placeholder="Path (e.g. /v1/temp)" required>
-            <input type="text"   id="crTarget" placeholder="Target URL (e.g. http://10.0.0.5:8080)" required>
-            <input type="number" id="crTTL"    placeholder="TTL seconds (0 = permanent)" value="3600">
+            <input type="text"   id="clusterRouteHost"   placeholder="Hostname (e.g. api.example.com)" required>
+            <input type="text"   id="clusterRoutePath"   placeholder="Path (e.g. /v1/temp)" required>
+            <input type="text"   id="clusterRouteTarget" placeholder="Target URL (e.g. http://10.0.0.5:8080)" required>
+            <input type="number" id="crTTL"              placeholder="TTL seconds (0 = permanent)" value="3600">
             <button type="submit" class="primary">Broadcast</button>
             <button type="button" class="btn close-modal" style="margin-top:5px;">Cancel</button>
         </form>
     </div>
 </div>
 
-<!-- STRICT DELETE MODAL — with TOTP gate (Part 7) -->
+<!-- STRICT DELETE MODAL -->
 <div class="modal-overlay" id="strictDeleteModal">
     <div class="modal">
         <h3 style="color:var(--danger);">⚠️ Danger Zone</h3>
-        <p id="strictDeleteText"   style="font-size:13px;margin-bottom:10px;"></p>
+        <p id="strictDeleteMessage" style="font-size:13px;margin-bottom:10px;"></p>
         <p style="font-size:11px;color:var(--text-mute);margin-bottom:15px;">
             To confirm, type <strong id="strictDeleteTarget" style="color:var(--fg);"></strong> below:
         </p>
@@ -293,9 +274,10 @@
                    maxlength="6" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]*"
                    placeholder="000000">
         </div>
-        <div style="display:flex;gap:10px;margin-top:20px;">
-            <button id="strictDeleteBtn" class="btn error" style="flex:1;" disabled>Delete Forever</button>
-            <button class="btn close-modal" style="flex:1;">Cancel</button>
+        <div id="strictDeleteError" style="color:var(--danger);font-size:12px;margin-top:8px;display:none;background:rgba(255,59,48,0.08);padding:8px;border-radius:4px;"></div>
+        <div style="display:flex;gap:10px;margin-top:16px;">
+            <button id="strictDeleteConfirmBtn" class="btn error" style="flex:1;" disabled>Delete Forever</button>
+            <button id="strictDeleteCancelBtn"  class="btn close-modal" style="flex:1;">Cancel</button>
         </div>
     </div>
 </div>

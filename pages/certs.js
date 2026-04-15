@@ -1,10 +1,11 @@
 /**
  * pages/certs.js — Certificates page.
  */
-import { listen, emit, notify, ui, countdown } from '../lib/oja.full.esm.js';
+import { listen, notify, ui, countdown } from '../lib/oja.full.esm.js';
 
 export default async function({ find, on, onUnmount, ready, inject }) {
-    const { store, api } = inject('app');
+    const { store, api, oja } = inject('app');
+    const { emit } = oja;
     const _certCountdowns = new Map();
 
     function _destroyCertCountdowns() { for (const h of _certCountdowns.values()) h.destroy(); _certCountdowns.clear(); }
@@ -136,6 +137,14 @@ export default async function({ find, on, onUnmount, ready, inject }) {
     });
 
     const unsubRefresh = listen('certs:refresh', refresh);
+
+    // Show skeleton while loading if no cached data
+    const cached = store.get('certificates');
+    if (cached) render(cached);
+    else {
+        const tbody = find('#certsTable');
+        if (tbody) tbody.innerHTML = `<tr><td colspan="4"><div class="loading-rows"><div class="loading-row"></div><div class="loading-row"></div><div class="loading-row"></div></div></td></tr>`;
+    }
     refresh();
 
     onUnmount(() => { unsubRefresh(); _destroyCertCountdowns(); });

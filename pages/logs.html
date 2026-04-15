@@ -1,7 +1,7 @@
 <div class="page active" style="max-width:100%;">
 
     <div class="logs-toolbar">
-        <!-- Group 1: filter + tail -->
+        <!-- Group 1: level filter + tail + search -->
         <div class="logs-toolbar-left">
             <div class="filter-chips">
                 <span class="chip active" data-level="ALL">ALL</span>
@@ -17,6 +17,14 @@
                 <option value="500">Last 500</option>
                 <option value="1000">Last 1000</option>
             </select>
+            <span class="divider-v hide-mobile"></span>
+            <!-- Phase 7 #50 — full-text search -->
+            <div style="position:relative;display:flex;align-items:center;">
+                <input type="text" id="logsSearch" placeholder="Search logs…"
+                       style="width:160px;height:var(--btn-h-sm);padding:0 24px 0 8px;font-size:12px;border:1px solid var(--border);border-radius:6px;background:var(--panel-bg);color:var(--text-main);outline:none;"
+                       autocomplete="off" spellcheck="false">
+                <button id="logsSearchClear" style="position:absolute;right:6px;background:none;border:none;cursor:pointer;color:var(--text-mute);font-size:12px;padding:0;display:none;">✕</button>
+            </div>
         </div>
 
         <!-- Group 2: icon action buttons -->

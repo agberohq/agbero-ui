@@ -31,7 +31,7 @@
 
         <div class="brief-panel">
             <div class="brief-panel-header">
-                <span class="brief-panel-title">Error Hotspots</span>
+                <span class="brief-panel-title">Slowest Endpoints</span>
                 <span id="errorBriefSub" style="font-size:10px;color:var(--text-mute);font-family:var(--font-mono);"></span>
             </div>
             <div class="brief-panel-body" id="errorBriefing">
@@ -59,9 +59,11 @@
                 <div class="hb-seg hb-err" style="width:0%"></div>
             </div>
             <div class="health-bar-summary">
-                <span id="errorRateText" class="health-bar-stat">0.0% errors</span>
+                <span id="errorRateText"   class="health-bar-stat">0.0% errors</span>
                 <span id="latencyHttpText" class="health-bar-stat"></span>
                 <span id="latencyTcpText"  class="health-bar-stat"></span>
+                <span id="latencyUdpText"  class="health-bar-stat"></span>
+                <span id="latencyWorkerText" class="health-bar-stat"></span>
                 <span id="lastUpdatedText" class="health-bar-updated">—</span>
                 <span class="health-bar-expand-icon">›</span>
             </div>
@@ -78,6 +80,7 @@
             <span class="chart-tab" data-type="http">HTTP</span>
             <span class="chart-tab" data-type="tcp">TCP</span>
             <span class="chart-tab" data-type="udp">UDP</span>
+            <span class="chart-tab" data-type="worker">WORKER</span>
         </div>
         <div id="responseGraph" style="width:100%;height:100%;"></div>
     </div>
@@ -91,5 +94,27 @@
         <div id="notifList" class="notif-list">
             <div class="notif-empty">No alerts — everything looks healthy</div>
         </div>
+    </div>
+</div>
+
+<!-- Cert detail modal — scoped to dashboard, only used from this page -->
+<div class="modal-overlay" id="certDetailModal">
+    <div class="modal" style="max-width:420px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;">
+            <h3 style="margin:0;font-size:14px;" id="certDetailTitle">Certificate</h3>
+            <button class="close-modal" style="background:none;border:none;cursor:pointer;font-size:18px;color:var(--text-mute);padding:0 4px;">✕</button>
+        </div>
+        <div id="certDetailBody" class="detail-grid"></div>
+    </div>
+</div>
+
+<!-- Git deploy detail modal — scoped to dashboard, only used from this page -->
+<div class="modal-overlay" id="gitDetailModal">
+    <div class="modal" style="max-width:420px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;">
+            <h3 style="margin:0;font-size:14px;" id="gitDetailTitle">Git Deploy</h3>
+            <button class="close-modal" style="background:none;border:none;cursor:pointer;font-size:18px;color:var(--text-mute);padding:0 4px;">✕</button>
+        </div>
+        <div id="gitDetailBody" class="detail-grid"></div>
     </div>
 </div>

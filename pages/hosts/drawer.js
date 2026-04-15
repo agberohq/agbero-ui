@@ -37,6 +37,7 @@ import { isOn } from '../../js/utils.js';
 
 function openDrawer(id)  { modal.open(id); }
 function closeDrawer(id) { modal.closeById(id); }
+function esc(str) { return String(str||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 
 on('[data-action="close-drawer"]', 'click', (e, btn) => closeDrawer(btn.dataset.target));
 
@@ -224,8 +225,8 @@ function gitSection(git, hostname) {
 function serverlessSection(serverless) {
     if (!isOn(serverless?.enabled)) return '';
     const workers = serverless.workers || [];
-    const rests   = serverless.rests   || [];
-    if (!workers.length && !rests.length) return '';
+    const replays = serverless.replay  || [];   // Go JSON tag is "replay" not "rests"
+    if (!workers.length && !replays.length) return '';
 
     let html = '';
 
@@ -242,26 +243,45 @@ function serverlessSection(serverless) {
                         ${w.run_once    ? badge('run once', '') : ''}
                         ${w.restart     ? badge('restart: ' + w.restart, '') : ''}
                         ${w.schedule    ? badge('cron: ' + w.schedule, 'warning') : ''}
+                        ${w.engine      ? badge('engine: ' + w.engine, '') : ''}
                         ${w.timeout && w.timeout !== '0s' ? badge('timeout: ' + w.timeout, '') : ''}
                     </div>
                 </div>
             </div>`).join('');
     }
 
-    if (rests.length) {
-        html += `<div style="font-size:11px;font-weight:500;color:var(--text-mute);text-transform:uppercase;letter-spacing:.5px;margin:10px 0 6px;">REST Proxies (${rests.length})</div>`;
-        html += rests.map(r => `
-            <div class="handler-card" style="margin-bottom:6px;">
-                <span class="handler-icon" style="font-size:16px;">🔌</span>
+    if (replays.length) {
+        html += `<div style="font-size:11px;font-weight:500;color:var(--text-mute);text-transform:uppercase;letter-spacing:.5px;margin:${workers.length ? '10px' : '0'} 0 6px;">Replay Proxies (${replays.length})</div>`;
+        html += replays.map(r => {
+            const isRelay  = !r.url && (r.allowed_domains?.length > 0);
+            const methods  = (r.methods || []).join(' · ') || 'ALL';
+            const domains  = (r.allowed_domains || []).join(', ');
+            const hdrCount = Object.keys(r.headers || {}).length;
+            const cacheOn  = isOn(r.cache?.enabled);
+
+            return `<div class="handler-card" style="margin-bottom:6px;">
+                <span class="handler-icon" style="font-size:16px;">🔀</span>
                 <div class="handler-info">
-                    <div style="display:flex;align-items:center;gap:6px;">
-                        <strong>${r.name}</strong>
-                        ${badge(r.method || 'GET', 'info')}
+                    <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+                        <strong>${esc(r.name)}</strong>
+                        ${badge(methods, 'info')}
+                        ${isRelay ? badge('relay mode', 'warning') : ''}
+                        ${isOn(r.enabled) ? '' : badge('disabled', 'error')}
                     </div>
-                    <span style="font-size:11px;word-break:break-all;"><a href="${r.url}" target="_blank" rel="noopener" style="color:var(--accent);">${r.url}</a></span>
-                    ${r.timeout && r.timeout !== '0s' ? `<span style="font-size:10px;color:var(--text-mute);">timeout: ${r.timeout}</span>` : ''}
+                    ${!isRelay && r.url ? `<a href="${esc(r.url)}" target="_blank" rel="noopener" style="font-family:var(--font-mono);font-size:11px;color:var(--accent);word-break:break-all;">${esc(r.url)}</a>` : ''}
+                    ${isRelay && domains ? `<span style="font-size:11px;color:var(--text-mute);">domains: <span style="font-family:var(--font-mono);color:var(--fg);">${esc(domains)}</span></span>` : ''}
+                    <div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:4px;">
+                        ${r.timeout && r.timeout !== '0s' ? badge('timeout: ' + r.timeout, '') : ''}
+                        ${isOn(r.strip_headers)           ? badge('strip headers', '') : ''}
+                        ${isOn(r.forward_query)           ? badge('forward query', '') : ''}
+                        ${cacheOn                         ? badge('cache ' + (r.cache?.ttl || ''), 'info') : ''}
+                        ${hdrCount > 0                    ? badge(hdrCount + ' headers', '') : ''}
+                        ${r.referer_mode && r.referer_mode !== 'auto' ? badge('referer: ' + r.referer_mode, '') : ''}
+                        ${isOn(r.auth?.enabled)           ? badge('auth: ' + (r.auth?.method || '?'), 'warning') : ''}
+                    </div>
                 </div>
-            </div>`).join('');
+            </div>`;
+        }).join('');
     }
 
     return section('⚡ Serverless', html);
