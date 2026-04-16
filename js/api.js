@@ -142,8 +142,9 @@ export async function addHost(domain, config) {
     return _safe(() => getApi().post('/api/v1/discovery', { domain, config }));
 }
 
-export async function addHostHCL(hclText) {
-    return _safe(() => getApi().post('/api/v1/discovery', hclText, {
+export async function addHostHCL(hclText, filename = '') {
+    const query = filename ? `?filename=${encodeURIComponent(filename)}` : '';
+    return _safe(() => getApi().post(`/api/v1/discovery${query}`, hclText, {
         raw:     true,
         headers: { 'Content-Type': 'text/plain; charset=utf-8' },
     }));

@@ -290,16 +290,29 @@
         <!-- ── EDIT VIEW ─────────────────────────────────────────────────── -->
         <div id="hclEditView">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
-                <h3 style="margin:0;font-size:15px;">Edit: <span id="hclEditorTitle" class="mono" style="font-size:14px;"></span></h3>
+                <h3 style="margin:0;font-size:15px;" id="hclEditorTitle">Edit Host</h3>
                 <div style="display:flex;gap:6px;align-items:center;">
                     <span style="font-size:11px;color:var(--text-mute);background:var(--hover-bg);padding:2px 8px;border-radius:3px;font-family:var(--font-mono);">HCL</span>
                     <button id="formatHostJsonBtn" type="button" class="btn small">Format</button>
                 </div>
             </div>
-            <p style="font-size:11px;color:var(--text-mute);margin:0 0 10px;">Edit raw HCL — Tab inserts 2 spaces. Changes save to disk and hot-reload.</p>
+
+            <!-- Filename row — shown in create mode only -->
+            <div id="hclFilenameRow" style="display:none;margin-bottom:10px;">
+                <label style="font-size:11px;color:var(--text-mute);display:block;margin-bottom:4px;">FILENAME</label>
+                <div style="display:flex;align-items:center;gap:6px;">
+                    <input type="text" id="hclFilenameInput" class="search-input"
+                           style="width:200px;font-family:var(--font-mono);font-size:12px;"
+                           placeholder="e.g. myapp" autocomplete="off" spellcheck="false">
+                    <span style="font-size:12px;color:var(--text-mute);font-family:var(--font-mono);">.hcl</span>
+                    <span style="font-size:11px;color:var(--text-mute);margin-left:4px;">Set <code>domains</code> in the HCL to match your hostname.</span>
+                </div>
+            </div>
+
+            <p id="hclEditorHint" style="font-size:11px;color:var(--text-mute);margin:0 0 10px;"></p>
             <div id="hclEditorError" style="color:var(--danger);font-size:12px;margin-bottom:8px;display:none;background:rgba(255,59,48,0.1);padding:8px;border-radius:4px;"></div>
             <textarea id="hclEditorTextarea" spellcheck="false" class="json-editor"
-                      style="width:100%;height:360px;font-size:12px;font-family:var(--font-mono);line-height:1.6;box-sizing:border-box;tab-size:2;resize:vertical;"></textarea>
+                      style="width:100%;height:340px;font-size:12px;font-family:var(--font-mono);line-height:1.6;box-sizing:border-box;tab-size:2;resize:vertical;"></textarea>
             <div style="display:flex;gap:10px;margin-top:12px;">
                 <button id="hclReviewBtn" class="btn primary" style="flex:1;">Review changes</button>
                 <button class="btn close-modal" style="width:100px;">Cancel</button>

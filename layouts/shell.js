@@ -380,10 +380,14 @@ route "/" {
         _hclMode     = 'edit';
         _hclOriginal = hcl || '';
         _hclDomain   = domain;
-        const titleEl = find('#hclEditorTitle');
-        const ta      = find('#hclEditorTextarea');
-        if (titleEl) titleEl.textContent = `Edit: ${domain}`;
-        if (ta)      ta.value = hcl || '';
+        const titleEl    = find('#hclEditorTitle');
+        const ta         = find('#hclEditorTextarea');
+        const hintEl     = find('#hclEditorHint');
+        const filenameRow= find('#hclFilenameRow');
+        if (titleEl)     titleEl.textContent = `Edit: ${domain}`;
+        if (hintEl)      hintEl.textContent  = 'Edit raw HCL — Tab inserts 2 spaces. Changes save to disk and hot-reload.';
+        if (filenameRow) filenameRow.style.display = 'none';
+        if (ta)          ta.value = hcl || '';
         _showEditView();
         modal.open('hclEditorModal');
         requestAnimationFrame(() => ta?.focus());
@@ -393,13 +397,19 @@ route "/" {
         _hclMode     = 'create';
         _hclOriginal = '';
         _hclDomain   = '';
-        const titleEl = find('#hclEditorTitle');
-        const ta      = find('#hclEditorTextarea');
-        if (titleEl) titleEl.textContent = 'New Host';
-        if (ta)      ta.value = _hclTemplate;
+        const titleEl    = find('#hclEditorTitle');
+        const ta         = find('#hclEditorTextarea');
+        const hintEl     = find('#hclEditorHint');
+        const filenameRow= find('#hclFilenameRow');
+        const filenameIn = find('#hclFilenameInput');
+        if (titleEl)     titleEl.textContent = 'New Host';
+        if (hintEl)      hintEl.textContent  = 'Write the full host config as HCL. The filename will be used to identify this host on disk.';
+        if (filenameRow) filenameRow.style.display = '';
+        if (filenameIn)  filenameIn.value = '';
+        if (ta)          ta.value = _hclTemplate;
         _showEditView();
         modal.open('hclEditorModal');
-        requestAnimationFrame(() => ta?.focus());
+        requestAnimationFrame(() => filenameIn?.focus());
     });
 
     on('#hclEditorTextarea', 'keydown', (e, ta) => {
@@ -423,10 +433,19 @@ route "/" {
     });
 
     on('#hclReviewBtn', 'click', () => {
-        const ta    = find('#hclEditorTextarea');
-        const errEl = find('#hclEditorError');
+        const ta     = find('#hclEditorTextarea');
+        const errEl  = find('#hclEditorError');
         const edited = ta?.value || '';
         if (errEl) errEl.style.display = 'none';
+
+        if (_hclMode === 'create') {
+            const fname = (find('#hclFilenameInput')?.value || '').trim();
+            if (!fname) {
+                if (errEl) { errEl.textContent = 'Filename is required (e.g. myapp → saves as myapp.hcl)'; errEl.style.display = 'block'; }
+                find('#hclFilenameInput')?.focus();
+                return;
+            }
+        }
 
         const valErr = validateHCL(edited);
         if (valErr) {
@@ -435,9 +454,7 @@ route "/" {
         }
 
         if (_hclMode === 'create') {
-            // For create — show full content as additions (diff against empty)
-            const hunks = diffLines('', edited);
-            _showDiffView(hunks);
+            _showDiffView(diffLines('', edited));
         } else {
             const hunks = diffLines(_hclOriginal, edited);
             if (!hunks.some(h => h.type !== 'keep')) {
@@ -459,7 +476,8 @@ route "/" {
         try {
             let res;
             if (_hclMode === 'create') {
-                res = await api.addHostHCL(edited);
+                const fname = (find('#hclFilenameInput')?.value || '').trim().replace(/\.hcl$/i, '');
+                res = await api.addHostHCL(edited, fname);
             } else {
                 res = await api.updateHostHCL(_hclDomain, edited);
             }
