@@ -3,7 +3,6 @@
         <h2 id="configPageTitle">Configuration Overview</h2>
         <div class="config-actions">
             <button class="btn small" id="configRefreshBtn">⟳ Refresh</button>
-            <button class="btn small" id="configDiffBtn">↔️ Diff</button>
         </div>
     </div>
 
@@ -92,34 +91,15 @@
         <div class="config-details-grid" id="configGitDetails"></div>
     </details>
 
-    <!-- Hosts Summary -->
-    <details class="config-section config-collapse" open>
-        <summary class="config-section-summary">📊 Hosts Summary</summary>
-        <div class="table-responsive">
-            <table class="config-hosts-table">
-                <thead><tr><th>Host</th><th>Routes</th><th>Backends</th><th>TLS</th><th>Domains</th></tr></thead>
-                <tbody id="configHostsBody"></tbody>
-            </table>
-        </div>
-        <div id="configHostsPager"></div>
-    </details>
-
-    <!-- Raw Global Config -->
+    <!-- Raw Config -->
     <details class="config-section config-collapse">
         <summary class="config-section-summary">
-            <span>{ } Raw Global Config</span>
+            <span>{ } Raw Config</span>
             <span class="config-section-actions" onclick="event.stopPropagation()">
                 <button class="btn small" id="configCopyBtn">Copy</button>
                 <button class="btn small" id="configExpandBtn">Expand</button>
             </span>
         </summary>
-        <div id="configFormatTabs" style="margin:10px 0 6px;"></div>
-        <pre class="code-box" id="configContent" style="max-height:360px;overflow:auto;font-family:var(--font-mono);font-size:12px;line-height:1.6;margin:0;"></pre>
-    </details>
-
-    <!-- Diff -->
-    <details class="config-section config-collapse" id="configDiffSection" style="display:none;">
-        <summary class="config-section-summary">↔️ Configuration Changes</summary>
-        <div class="code-box diff-box" id="configDiff"></div>
+        <pre class="code-box" id="configContent" style="max-height:400px;overflow:auto;font-family:var(--font-mono);font-size:11px;line-height:1.6;margin:0;"></pre>
     </details>
 </div>

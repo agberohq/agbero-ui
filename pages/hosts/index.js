@@ -100,7 +100,8 @@ export default async function({ find, findAll, on, onUnmount, ready, inject }) {
     on('#hostSearch','input',(e,el)=>{clearTimeout(searchTimeout);const cb=find('#hostSearchClear');if(cb)cb.style.display=el.value?'':'none';searchTimeout=setTimeout(()=>{store.set('searchTerm',el.value.trim());syncList();},150);});
     on('#hostSearchClear','click',()=>{const inp=find('#hostSearch');if(inp){inp.value='';inp.focus();}find('#hostSearchClear').style.display='none';store.set('searchTerm','');syncList();});
     if(savedTerm&&find('#hostSearchClear'))find('#hostSearchClear').style.display='';
-    on('#addHostBtn',      'click', ()=>emit('app:navigate',{path:'/add-host'}));
+    on('#addHostBtn',          'click', () => emit('app:navigate', { path: '/add-host' }));
+    on('#addHostAdvancedBtn',  'click', () => emit('host:open-create-hcl'));
     on('#refreshHostsBtn', 'click', refresh);
     on('[data-action="open-route"]',     'click',(e,b)=>emit('drawer:open-route',{host:b.dataset.host,idx:parseInt(b.dataset.idx),type:b.dataset.type}));
     on('[data-action="open-host-route"]','click',(e,b)=>{e.stopPropagation();emit('drawer:open-route',{host:b.dataset.hostname,idx:0,type:'route'});});

@@ -3250,7 +3250,7 @@ textarea.wz-input { height: auto; min-height: 80px; }
 .notif-item-body { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .notif-item-msg  { font-size: 12px; color: var(--text-main); font-weight: 500; }
 .notif-item-sub  { font-size: 11px; color: var(--text-mute); font-family: var(--font-mono);
-                   overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* Health section */
 .health-section {
@@ -3368,7 +3368,7 @@ textarea.wz-input { height: auto; min-height: 80px; }
 .oja-diff-sign   { flex-shrink: 0; user-select: none; opacity: 0.7; }
 .oja-diff-text   { flex: 1; word-break: break-all; }
 .oja-diff-skip   { padding: 2px 12px; font-size: 10px; color: var(--text-mute);
-                   background: var(--hover-bg); font-style: italic; }
+    background: var(--hover-bg); font-style: italic; }
 
 /* Oja autocomplete */
 .oja-autocomplete-suggestions {
@@ -3410,3 +3410,17 @@ textarea.wz-input { height: auto; min-height: 80px; }
 .json-num  { color: #b5cea8; }
 .json-bool { color: #569cd6; font-weight: 500; }
 .json-null { color: #569cd6; font-style: italic; }
+
+/* Keeper modal tabs */
+.keeper-tab {
+    background: none;
+    border: none;
+    border-bottom: 2px solid transparent;
+    padding: 8px 16px;
+    font-size: 13px;
+    color: var(--text-mute);
+    cursor: pointer;
+    margin-bottom: -1px;
+}
+.keeper-tab:hover { color: var(--fg); }
+.keeper-tab-active { color: var(--fg); border-bottom-color: var(--accent); font-weight: 500; }

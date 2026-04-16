@@ -1,116 +1,126 @@
 <div class="page active">
 
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:24px;">
+    <!-- Header -->
+    <div class="flex-right" style="margin-bottom:24px;">
         <div>
             <h2 style="margin:0;font-size:17px;font-weight:400;">Keeper</h2>
-            <p style="margin:3px 0 0;font-size:12px;color:var(--text-mute);">Encrypted secret store. Reference secrets in config as <code>ss://namespace/key</code></p>
+            <p style="margin:3px 0 0;font-size:12px;color:var(--text-mute);">Encrypted secret store — reference as <code>ss://namespace/key</code></p>
         </div>
-        <div style="display:flex;gap:8px;" id="keeperActions">
-            <button class="btn small" id="keeperLockBtn" style="display:none;color:var(--danger);border-color:var(--danger);">🔒 Lock</button>
-            <button class="btn primary small" id="keeperAddBtn" style="display:none;">+ Secret</button>
-        </div>
+        <div style="flex:1;"></div>
+        <button class="btn small" id="keeperRefreshBtn" title="Refresh">⟳</button>
+        <button class="btn primary small" id="keeperAddBtn" style="display:none;">+ Secret</button>
     </div>
 
     <!-- State A: not configured -->
     <div id="keeperNotConfiguredPanel" style="display:none;">
-        <div style="max-width:480px;margin:80px auto;text-align:center;">
-            <div style="font-size:44px;margin-bottom:14px;line-height:1;">🗄️</div>
-            <p style="color:var(--text-mute);font-size:13px;margin:0 0 20px;line-height:1.7;">
-                Keeper is not configured on this node.<br>
-                Add a <code>security { keeper { ... } }</code> block to your global config to enable encrypted secret storage.
-            </p>
-            <pre style="text-align:left;background:var(--panel-bg);border:1px solid var(--border);border-radius:8px;padding:14px 16px;font-size:11px;font-family:var(--font-mono);color:var(--fg);overflow-x:auto;">security {
-  enabled = "on"
+        <div class="empty-state" style="max-width:500px;margin:80px auto;text-align:center;">
+            <span style="font-size:40px;display:block;margin-bottom:12px;">🗄️</span>
+            <span style="font-size:14px;font-weight:500;margin-bottom:8px;">Keeper not configured</span>
+            <span style="color:var(--text-mute);line-height:1.7;">Add a <code>keeper</code> block inside <code>security { }</code> in your global config to enable encrypted secret storage.</span>
+            <pre style="text-align:left;background:var(--panel-bg);border:1px solid var(--border);border-radius:8px;padding:14px 16px;font-size:11px;font-family:var(--font-mono);margin-top:16px;overflow-x:auto;">security {
   keeper {
     enabled    = "on"
-    passphrase = env.KEEPER_PASS   # or ss://… once bootstrapped
+    passphrase = env.KEEPER_PASS
     auto_lock  = "30m"
+    audit      = "on"
   }
 }</pre>
         </div>
     </div>
 
-    <!-- State B: configured, locked -->
-    <div id="keeperLockedPanel">
-        <div style="max-width:360px;margin:80px auto;text-align:center;">
-            <div style="font-size:44px;margin-bottom:14px;line-height:1;">🔐</div>
-            <p style="color:var(--text-mute);font-size:13px;margin:0 0 20px;line-height:1.6;">
-                Enter your passphrase to unlock the secret store.<br>
-                <span style="font-size:11px;">
-                    Secrets referenced as <code>ss://namespace/path</code> cannot be resolved until unlocked.<br>
-                    The store auto-locks after the timeout configured in <code>security.keeper.auto_lock</code> (default 30 min).
-                    While unlocked, the passphrase is held only in browser memory — never written to disk or storage.
-                </span>
-            </p>
-            <div style="display:flex;gap:8px;align-items:stretch;">
-                <input type="password" id="keeperPassphrase" class="search-input"
-                       placeholder="Passphrase" style="flex:1;"
-                       autocomplete="current-password">
-                <button class="btn primary" id="keeperUnlockBtn">Unlock</button>
-            </div>
-            <div id="keeperUnlockError" style="color:var(--danger);font-size:11px;margin-top:8px;display:none;text-align:left;"></div>
-        </div>
-    </div>
-
-    <!-- State C: configured, unlocked -->
-    <div id="keeperUnlockedPanel" style="display:none;">
-
-        <!-- Add secret inline form -->
-        <div id="keeperAddForm" style="display:none;background:var(--panel-bg);border:1px solid var(--border);border-radius:8px;padding:16px;margin-bottom:16px;">
-            <div style="font-size:13px;font-weight:500;margin-bottom:12px;">New Secret</div>
-            <!-- Namespace + path as two required fields — enforces ss://namespace/path format -->
-            <div style="display:grid;grid-template-columns:1fr 1fr 2fr;gap:8px;margin-bottom:6px;align-items:center;">
-                <input type="text" id="keeperNewNs" class="search-input"
-                       placeholder="namespace" autocomplete="off" spellcheck="false"
-                       title="Namespace — required (e.g. prod, db, tls)">
-                <input type="text" id="keeperNewPath" class="search-input"
-                       placeholder="key/path" autocomplete="off" spellcheck="false"
-                       title="Key path within the namespace">
-                <input type="text" id="keeperNewValue" class="search-input"
-                       placeholder="value  or  env.VAR_NAME" autocomplete="off">
-            </div>
-            <div id="keeperRefPreview" style="font-size:11px;color:var(--text-mute);font-family:var(--font-mono);margin-bottom:10px;min-height:16px;"></div>
-            <div style="display:flex;justify-content:space-between;align-items:center;">
-                <span style="font-size:11px;color:var(--text-mute);">
-                    Use <code>env.VAR</code> for environment variables.<br>
-                    Reference in config as <code>ss://namespace/key</code> — namespace is always required.
-                </span>
-                <div style="display:flex;gap:6px;">
-                    <button class="btn small" id="keeperCancelAddBtn">Cancel</button>
-                    <button class="btn primary small" id="keeperSaveBtn">Save Secret</button>
+    <!-- State B: locked -->
+    <div id="keeperLockedPanel" style="display:none;">
+        <div style="max-width:420px;margin:60px auto;">
+            <div style="background:var(--panel-bg);border:1px solid var(--border);border-radius:10px;text-align:center;padding:36px 28px;">
+                <div style="font-size:40px;margin-bottom:16px;">🔐</div>
+                <div style="font-size:15px;font-weight:500;margin-bottom:8px;">Keeper is locked</div>
+                <div style="font-size:12px;color:var(--text-mute);line-height:1.7;margin-bottom:20px;">
+                    Secrets referenced as <code>ss://namespace/key</code> cannot be resolved until the keeper is unlocked.
+                    The keeper auto-locks after the timeout set in <code>security.keeper.auto_lock</code>.
+                </div>
+                <div style="background:var(--hover-bg);border:1px solid var(--border);border-radius:6px;padding:10px 14px;font-size:11px;color:var(--text-mute);text-align:left;">
+                    To unlock, restart agbero with the correct passphrase set in the environment, or use the CLI.
                 </div>
             </div>
-            <div id="keeperAddError" style="color:var(--danger);font-size:11px;margin-top:6px;display:none;"></div>
-        </div>
-
-        <!-- Keys list -->
-        <div id="keeperList">
-            <div class="loading-rows"><div class="loading-row"></div><div class="loading-row"></div></div>
-        </div>
-
-        <!-- File upload section -->
-        <div id="keeperFileUpload" style="margin-top:16px;padding-top:14px;border-top:1px solid var(--border);">
-            <div style="font-size:13px;font-weight:500;margin-bottom:10px;">Upload file as secret</div>
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:6px;">
-                <input type="text" id="keeperFileNs"   class="search-input" placeholder="namespace" autocomplete="off"
-                       title="Namespace — required">
-                <input type="text" id="keeperFilePath" class="search-input" placeholder="key/path" autocomplete="off"
-                       title="Key path within the namespace">
-            </div>
-            <div id="keeperFileRefPreview" style="font-size:11px;color:var(--text-mute);font-family:var(--font-mono);margin-bottom:8px;min-height:14px;"></div>
-            <div style="display:flex;gap:8px;align-items:center;">
-                <label class="btn small" style="cursor:pointer;display:inline-flex;align-items:center;gap:6px;">
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-                    Choose file
-                    <input type="file" id="keeperFileInput" style="display:none;">
-                </label>
-                <span id="keeperFileName" style="font-size:12px;color:var(--text-mute);font-family:var(--font-mono);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">No file chosen</span>
-                <button class="btn primary small" id="keeperUploadBtn" disabled>Upload</button>
-            </div>
-            <div class="wz-hint" style="margin-top:6px;">
-                Namespace is required: <code>ss://namespace/key</code>. Suitable for PEM certs, SSH keys, binary blobs.
-            </div>
-            <div id="keeperFileError" style="color:var(--danger);font-size:11px;margin-top:6px;display:none;"></div>
         </div>
     </div>
+
+    <!-- State C: unlocked -->
+    <div id="keeperUnlockedPanel" style="display:none;">
+        <!-- Auto-lock timer -->
+        <div id="keeperTimerBar" class="keeper-timer-bar">
+            <span class="keeper-timer-dot"></span>
+            <span id="keeperTimerText">Unlocked</span>
+        </div>
+        <!-- Secrets list grouped by namespace -->
+        <div id="keeperList" style="margin-top:16px;">
+            <div class="loading-rows"><div class="loading-row"></div><div class="loading-row"></div></div>
+        </div>
+    </div>
+
+    <!-- Add Secret Modal -->
+    <div class="modal-overlay" id="keeperAddModal">
+        <div class="modal" style="max-width:520px;">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;">
+                <h3 style="margin:0;font-size:15px;">New Secret</h3>
+                <button class="close-modal" style="background:none;border:none;cursor:pointer;font-size:18px;color:var(--text-mute);padding:0 4px;">✕</button>
+            </div>
+
+            <!-- Namespace + key shared across both tabs -->
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:6px;">
+                <div>
+                    <label style="font-size:11px;color:var(--text-mute);display:block;margin-bottom:4px;">NAMESPACE</label>
+                    <input type="text" id="keeperNewNs" class="search-input" style="width:100%;box-sizing:border-box;"
+                           placeholder="e.g. prod, db, tls" autocomplete="off" spellcheck="false">
+                </div>
+                <div>
+                    <label style="font-size:11px;color:var(--text-mute);display:block;margin-bottom:4px;">KEY / PATH</label>
+                    <input type="text" id="keeperNewPath" class="search-input" style="width:100%;box-sizing:border-box;"
+                           placeholder="e.g. password, certs/server" autocomplete="off" spellcheck="false">
+                </div>
+            </div>
+            <div id="keeperRefPreview" style="font-size:11px;font-family:var(--font-mono);color:var(--accent);min-height:18px;margin-bottom:14px;"></div>
+
+            <!-- Tabs: Enter / Upload -->
+            <div style="display:flex;gap:0;border-bottom:1px solid var(--border);margin-bottom:16px;">
+                <button id="keeperTabEnter"  class="keeper-tab keeper-tab-active">Enter value</button>
+                <button id="keeperTabUpload" class="keeper-tab">Upload file</button>
+            </div>
+
+            <!-- Tab: Enter -->
+            <div id="keeperPanelEnter">
+                <label style="font-size:11px;color:var(--text-mute);display:block;margin-bottom:4px;">VALUE</label>
+                <textarea id="keeperNewValue" class="json-editor"
+                          style="width:100%;height:100px;font-size:12px;font-family:var(--font-mono);box-sizing:border-box;resize:vertical;"
+                          placeholder="secret value, or env.VAR_NAME for environment variable"
+                          autocomplete="off" spellcheck="false"></textarea>
+                <div style="font-size:11px;color:var(--text-mute);margin-top:5px;">
+                    Use <code>env.VAR</code> to reference an environment variable by name.
+                </div>
+            </div>
+
+            <!-- Tab: Upload -->
+            <div id="keeperPanelUpload" style="display:none;">
+                <label style="font-size:11px;color:var(--text-mute);display:block;margin-bottom:8px;">FILE</label>
+                <div style="display:flex;align-items:center;gap:10px;">
+                    <label class="btn small" style="cursor:pointer;flex-shrink:0;">
+                        Choose file
+                        <input type="file" id="keeperFileInput" style="display:none;">
+                    </label>
+                    <span id="keeperFileName" style="font-size:12px;color:var(--text-mute);font-family:var(--font-mono);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">No file chosen</span>
+                </div>
+                <div style="font-size:11px;color:var(--text-mute);margin-top:8px;">
+                    Suitable for PEM certificates, SSH keys, and binary blobs.
+                </div>
+            </div>
+
+            <div id="keeperModalError" style="color:var(--danger);font-size:12px;margin-top:10px;display:none;background:rgba(255,59,48,0.08);padding:8px;border-radius:4px;"></div>
+
+            <div style="display:flex;gap:8px;margin-top:16px;">
+                <button id="keeperSaveBtn" class="btn primary" style="flex:1;">Save Secret</button>
+                <button class="btn close-modal" style="width:90px;">Cancel</button>
+            </div>
+        </div>
+    </div>
+
 </div>

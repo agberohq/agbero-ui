@@ -107,6 +107,11 @@ class RouteGraph {
                 if (event.defaultPrevented) return;
                 if (typeof this._onClick === 'function') this._onClick(d);
             })
+            .on("contextmenu", (event, d) => {
+                event.preventDefault();
+                event.stopPropagation();
+                if (typeof this._onRightClick === 'function') this._onRightClick(event, d);
+            })
             .on("mouseenter", (event, d) => {
                 if (d.type === "root") return;
                 d3.select(event.currentTarget).select("circle")

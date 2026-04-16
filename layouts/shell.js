@@ -339,6 +339,16 @@ export default async function({ find, findAll, on, provide, onUnmount, signal, d
     // HCL Host editor
     let _hclOriginal = '';
     let _hclDomain   = '';
+    let _hclMode     = 'edit'; // 'edit' | 'create'
+
+    const _hclTemplate = `domains = ["example.localhost"]
+
+route "/" {
+  backends {
+    server "http://127.0.0.1:3000" {}
+  }
+}
+`;
 
     function _showEditView() {
         const ev = find('#hclEditView');
@@ -355,22 +365,38 @@ export default async function({ find, findAll, on, provide, onUnmount, signal, d
         const title   = find('#hclDiffTitle');
         const added   = hunks.filter(h => h.type === 'add').length;
         const removed = hunks.filter(h => h.type === 'remove').length;
-        if (title) title.textContent = _hclDomain;
+        if (title) title.textContent = _hclMode === 'create' ? 'New Host' : _hclDomain;
         if (stats) stats.textContent = `+${added} added · −${removed} removed`;
         if (body)  body.innerHTML    = renderDiff(hunks, { context: 4 });
         find('#hclEditView').style.display = 'none';
         find('#hclDiffView').style.display = 'flex';
+        const confirmBtn = find('#hclConfirmBtn');
+        if (confirmBtn) confirmBtn.textContent = _hclMode === 'create' ? 'Create Host' : 'Confirm & Save';
         const de = find('#hclDiffError');
         if (de) de.style.display = 'none';
     }
 
     const unsubHclOpen = listen('host:open-edit-hcl', ({ domain, hcl }) => {
+        _hclMode     = 'edit';
         _hclOriginal = hcl || '';
         _hclDomain   = domain;
         const titleEl = find('#hclEditorTitle');
         const ta      = find('#hclEditorTextarea');
-        if (titleEl) titleEl.textContent = domain;
+        if (titleEl) titleEl.textContent = `Edit: ${domain}`;
         if (ta)      ta.value = hcl || '';
+        _showEditView();
+        modal.open('hclEditorModal');
+        requestAnimationFrame(() => ta?.focus());
+    });
+
+    const unsubHclCreate = listen('host:open-create-hcl', () => {
+        _hclMode     = 'create';
+        _hclOriginal = '';
+        _hclDomain   = '';
+        const titleEl = find('#hclEditorTitle');
+        const ta      = find('#hclEditorTextarea');
+        if (titleEl) titleEl.textContent = 'New Host';
+        if (ta)      ta.value = _hclTemplate;
         _showEditView();
         modal.open('hclEditorModal');
         requestAnimationFrame(() => ta?.focus());
@@ -401,17 +427,25 @@ export default async function({ find, findAll, on, provide, onUnmount, signal, d
         const errEl = find('#hclEditorError');
         const edited = ta?.value || '';
         if (errEl) errEl.style.display = 'none';
+
         const valErr = validateHCL(edited);
         if (valErr) {
             if (errEl) { errEl.textContent = 'HCL error: ' + valErr; errEl.style.display = 'block'; }
             return;
         }
-        const hunks = diffLines(_hclOriginal, edited);
-        if (!hunks.some(h => h.type !== 'keep')) {
-            if (errEl) { errEl.textContent = 'No changes detected.'; errEl.style.display = 'block'; }
-            return;
+
+        if (_hclMode === 'create') {
+            // For create — show full content as additions (diff against empty)
+            const hunks = diffLines('', edited);
+            _showDiffView(hunks);
+        } else {
+            const hunks = diffLines(_hclOriginal, edited);
+            if (!hunks.some(h => h.type !== 'keep')) {
+                if (errEl) { errEl.textContent = 'No changes detected.'; errEl.style.display = 'block'; }
+                return;
+            }
+            _showDiffView(hunks);
         }
-        _showDiffView(hunks);
     });
 
     on('#hclBackBtn', 'click', () => _showEditView());
@@ -423,11 +457,17 @@ export default async function({ find, findAll, on, provide, onUnmount, signal, d
         if (errEl) errEl.style.display = 'none';
         ui.btn.loading(btn, 'Saving…');
         try {
-            const res = await api.updateHostHCL(_hclDomain, edited);
+            let res;
+            if (_hclMode === 'create') {
+                res = await api.addHostHCL(edited);
+            } else {
+                res = await api.updateHostHCL(_hclDomain, edited);
+            }
             if (res?.error) throw new Error(res.error);
             modal.closeAll();
             ui.btn.reset(btn);
-            notify.show(`${_hclDomain} updated`, 'success');
+            const msg = _hclMode === 'create' ? 'Host created' : `${_hclDomain} updated`;
+            notify.show(msg, 'success');
             emit('hosts:refresh');
             emit('config:reload');
         } catch (err) {
@@ -527,7 +567,7 @@ export default async function({ find, findAll, on, provide, onUnmount, signal, d
         clearTimeout(_latencyTimer);
         clearTimeout(_expiryWarnTimer);
         unsubNav(); unsubLogin(); unsubExpired(); unsubIcon();
-        unsubHclOpen(); unsubDelete(); unsubFwOpen();
+        unsubHclOpen(); unsubDelete(); unsubFwOpen(); unsubHclCreate();
         unsubSessionStart();
     });
 }

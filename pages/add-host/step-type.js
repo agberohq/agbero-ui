@@ -11,7 +11,6 @@ export default async function({ find, findAll, on, onUnmount, ready, props }) {
         { type:'proxy',      icon:'⚡', title:'Backend / Proxy',   sub:'Reverse proxy to upstream services',                  feats:['Load balancing: 11 strategies including adaptive and consistent hash','Health checks and circuit breaker','Rate limiting, CORS, caching','JWT / Basic / Forward / OAuth auth'] },
         { type:'serverless', icon:'λ',  title:'Serverless',        sub:'Managed workers and REST proxy endpoints',             feats:['HTTP-triggered, cron, background, or run-once workers','REST proxies with server-side credential injection','Git-sourced worker code with auto-deploy','env.VAR keeps secrets off the browser'] },
         { type:'tcp',        icon:'⟷', title:'TCP Proxy',         sub:'Raw TCP/TLS load balancing',                          feats:['Redis, PostgreSQL, MQTT — any TCP protocol','SNI-based routing for TLS passthrough','Health checks with custom send/expect probes','Round-robin, least-conn, sticky, adaptive'] },
-        { type:'advanced',   icon:'⚙️', title:'Advanced',          sub:'Write the full host config as HCL or JSON',           feats:['Full control over every config field','Native HCL with comments and block syntax','Mix web, proxy, serverless, TCP on one host','Validated before submission'] },
     ];
 
     const current = wizard.draftGet('host_type');

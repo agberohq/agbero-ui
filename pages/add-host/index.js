@@ -20,9 +20,8 @@ export default async function({ find, findAll, on, onUnmount, ready, inject }) {
             { key:'type',   label:'Type',   html:'/pages/add-host/step-type.html',   js:'/pages/add-host/step-type.js'   },
             { key:'domain', label:'Domain', html:'/pages/add-host/step-domain.html', js:'/pages/add-host/step-domain.js' },
         ];
-        if (type === 'advanced') { /* skip routes */ }
-        else if (type === 'tcp') steps.push({ key:'tcp',    label:'Proxy',  html:'/pages/add-host/step-tcp.html',    js:'/pages/add-host/step-tcp.js'    });
-        else if (type)           steps.push({ key:'routes', label:'Routes', html:'/pages/add-host/step-routes.html', js:'/pages/add-host/step-routes.js' });
+        if (type === 'tcp') steps.push({ key:'tcp',    label:'Proxy',  html:'/pages/add-host/step-tcp.html',    js:'/pages/add-host/step-tcp.js'    });
+        else if (type)      steps.push({ key:'routes', label:'Routes', html:'/pages/add-host/step-routes.html', js:'/pages/add-host/step-routes.js' });
         steps.push({ key:'review', label:'Review', html:'/pages/add-host/step-review.html', js:'/pages/add-host/step-review.js' });
         return steps;
     }

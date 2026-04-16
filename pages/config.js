@@ -6,23 +6,11 @@
  *          since native <details> provides the pattern cleanly.
  */
 export default async function({ find, on, onUnmount, ready, inject }) {
-    const { store, api, hcl: hclMod, utils, oja } = inject('app');
-    const { highlightHCL, formatHCL, HCL_CSS } = hclMod;
+    const { store, api, utils, oja } = inject('app');
     const { formatBytes, fmtNum, isOn } = utils;
-    const { ui, clipboard, notify, pagination, tabs } = oja;
+    const { ui, clipboard, notify } = oja;
 
-    if (!document.getElementById('hcl-theme')) {
-        const s = document.createElement('style');
-        s.id = 'hcl-theme';
-        s.textContent = HCL_CSS;
-        document.head.appendChild(s);
-    }
-
-    let _prevConfig = null, _currConfig = null, _allHosts = {},
-        _rawFormat = 'json', _rawExpanded = false, _globalObj = null;
-
-    const _hostsPg = pagination({ pageSize: 10, onPageChange: () => renderHostsSummary(_allHosts) });
-    _hostsPg.mount(find('#configHostsPager'));
+    let _rawExpanded = false, _fullConfig = null;
 
     const set = (id, v) => { const e = find('#' + id); if (e) e.innerText = v ?? '—'; };
 
@@ -35,13 +23,6 @@ export default async function({ find, on, onUnmount, ready, inject }) {
         if (isNaN(seconds)) return String(val);
         const d = Math.floor(seconds / 86400), h = Math.floor((seconds % 86400) / 3600), m = Math.floor((seconds % 3600) / 60);
         return [d > 0 && `${d}d`, h > 0 && `${h}h`, m > 0 && `${m}m`].filter(Boolean).join(' ') || '<1m';
-    }
-
-    function countBackends(host) {
-        let n = 0;
-        (host.routes  || []).forEach(r => n += r.backends?.servers?.length || 0);
-        (host.proxies || []).forEach(p => n += p.backends?.length || 0);
-        return n;
     }
 
     function getRouteCount(hosts) {
@@ -339,36 +320,6 @@ export default async function({ find, on, onUnmount, ready, inject }) {
         ).join('');
     }
 
-    function renderHostsSummary(hosts) {
-        _allHosts = hosts || {};
-        const tbody = find('#configHostsBody');
-        if (!tbody) return;
-        const entries = Object.entries(_allHosts);
-        if (!entries.length) {
-            tbody.innerHTML = '<tr><td colspan="5"><div class="empty-state">No hosts configured</div></td></tr>';
-            _hostsPg.updateTotal(0);
-            return;
-        }
-        _hostsPg.updateTotal(entries.length);
-        const page = _hostsPg.slice(entries);
-        tbody.innerHTML = page.map(([hostname, host]) => {
-            const routeCount   = (host.routes?.length || 0) + (host.proxies?.length || 0);
-            const backendCount = countBackends(host);
-            const tlsMode      = host.tls?.mode || 'none';
-            const tlsCls       = tlsMode === 'none' ? 'error' : tlsMode.includes('local') ? 'warning' : 'success';
-            const tlsTxt       = tlsMode === 'none' ? 'No TLS' : tlsMode.includes('local') ? 'Local' : 'Auto';
-            const domains      = (host.domains || []).slice(0, 2).join(', ') + (host.domains?.length > 2 ? '…' : '');
-            const maxBody      = host.limits?.max_body_size ? formatBytes(host.limits.max_body_size) : '';
-            return `<tr>
-                <td class="mono">${hostname}${maxBody ? `<span style="font-size:10px;color:var(--text-mute);margin-left:6px;">max ${maxBody}</span>` : ''}</td>
-                <td>${routeCount}</td>
-                <td>${backendCount}</td>
-                <td><span class="badge ${tlsCls}">${tlsTxt}</span></td>
-                <td style="font-size:11px;">${domains}</td>
-            </tr>`;
-        }).join('');
-    }
-
     function renderGitSection(gitStats) {
         const section = find('#configGitSection');
         const details = find('#configGitDetails');
@@ -383,49 +334,28 @@ export default async function({ find, on, onUnmount, ready, inject }) {
         }).join('');
     }
 
-    function _jsonToHCLHint(obj, indent = 0) {
-        if (!obj || typeof obj !== 'object') return String(obj ?? '');
-        const pad = '  '.repeat(indent), lines = [];
-        for (const [k, v] of Object.entries(obj)) {
-            if (v === null || v === undefined) continue;
-            const key = k.replace(/-/g, '_');
-            if (typeof v === 'object' && !Array.isArray(v) && Object.keys(v).length > 0) {
-                lines.push(`${pad}${key} {`);
-                lines.push(_jsonToHCLHint(v, indent + 1));
-                lines.push(`${pad}}`);
-            } else if (Array.isArray(v)) {
-                const vals = v.map(x => typeof x === 'string' ? `"${x}"` : String(x));
-                lines.push(`${pad}${key} = [${vals.join(', ')}]`);
-            } else if (typeof v === 'string') {
-                lines.push(`${pad}${key} = "${v}"`);
-            } else {
-                lines.push(`${pad}${key} = ${v}`);
-            }
-        }
-        return lines.join('\n');
-    }
-
-    function _refreshRaw() {
-        const el = find('#configContent');
-        if (!el || !_globalObj) return;
-        if (_rawFormat === 'hcl') {
-            el.innerHTML = highlightHCL(_jsonToHCLHint(_globalObj));
-        } else {
-            const json = JSON.stringify(_globalObj, null, 2);
-            el.innerHTML = json.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-        }
+    function _highlightJson(obj) {
+        return JSON.stringify(obj, null, 2)
+            .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+            .replace(/("(\\u[a-zA-Z0-9]{4}|\\[^u]|[^\\"])*"(\s*:)?|\b(true|false|null)\b|-?\d+(?:\.\d*)?(?:[eE][+\-]?\d+)?)/g, m => {
+                let cls = 'json-num';
+                if (/^"/.test(m)) cls = /:$/.test(m) ? 'json-key' : 'json-str';
+                else if (/true|false/.test(m)) cls = 'json-bool';
+                else if (/null/.test(m)) cls = 'json-null';
+                return `<span class="${cls}">${m}</span>`;
+            });
     }
 
     function renderRawConfig(config) {
-        _globalObj = config?.global || config;
-        _refreshRaw();
+        _fullConfig = config;
+        const el = find('#configContent');
+        if (!el || !config) return;
+        el.innerHTML = _highlightJson(config);
     }
 
     function renderAll(config, uptime) {
         if (!config || config.__offline) return;
-        _prevConfig  = _currConfig;
-        _currConfig  = config;
-        const g      = config.global || {};
+        const g = config.global || {};
         renderConfigMetrics(config, uptime);
         renderGlobalSettings(g);
         renderApiSection(g);
@@ -436,7 +366,6 @@ export default async function({ find, on, onUnmount, ready, inject }) {
         renderTlsSummary(store.get('certificates') || [], config);
         renderRuntimeSettings(uptime);
         renderFeatureFlags(config);
-        renderHostsSummary(config.hosts);
         renderGitSection(uptime?.git || store.get('gitStats') || {});
         renderRawConfig(config);
     }
@@ -465,11 +394,6 @@ export default async function({ find, on, onUnmount, ready, inject }) {
 
     on('#configRefreshBtn', 'click', refresh);
 
-    tabs.render(find('#configFormatTabs'), [{ key: 'json', label: 'JSON' }, { key: 'hcl', label: 'HCL' }], {
-        active: 'json', variant: 'pill',
-        onChange: (key) => { _rawFormat = key; _refreshRaw(); },
-    });
-
     on('#configCopyBtn', 'click', () => {
         const text = find('#configContent')?.innerText || '';
         clipboard.write(text).then(() => notify.show('Copied', 'success')).catch(() => notify.show('Copy failed', 'error'));
@@ -479,36 +403,8 @@ export default async function({ find, on, onUnmount, ready, inject }) {
         const box = find('#configContent');
         if (!box) return;
         _rawExpanded = !_rawExpanded;
-        box.style.maxHeight = _rawExpanded ? 'none' : '360px';
-        if (btn) btn.textContent = _rawExpanded ? '↕️ Collapse' : '↕️ Expand';
-    });
-
-    on('#configDiffBtn', 'click', () => {
-        const section = find('#configDiffSection');
-        const diffEl  = find('#configDiff');
-        if (!section || !diffEl) return;
-        if (section.open) { section.open = false; return; }
-        if (!_prevConfig || !_currConfig) {
-            diffEl.textContent = 'Refresh once more to compare with previous version.';
-        } else {
-            const oldStr = JSON.stringify(_prevConfig, null, 2).split('\n');
-            const newStr = JSON.stringify(_currConfig, null, 2).split('\n');
-            if (oldStr.join('') === newStr.join('')) {
-                diffEl.textContent = 'No changes detected.';
-            } else {
-                let out = '';
-                for (let i = 0; i < Math.max(oldStr.length, newStr.length); i++) {
-                    if (oldStr[i] !== newStr[i]) {
-                        if (oldStr[i]) out += `- ${oldStr[i]}\n`;
-                        if (newStr[i]) out += `+ ${newStr[i]}\n`;
-                    } else {
-                        out += `  ${oldStr[i]}\n`;
-                    }
-                }
-                diffEl.textContent = out;
-            }
-        }
-        section.open = true;
+        box.style.maxHeight = _rawExpanded ? 'none' : '400px';
+        if (btn) btn.textContent = _rawExpanded ? 'Collapse' : 'Expand';
     });
 
     ready();
