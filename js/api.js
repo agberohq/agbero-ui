@@ -288,7 +288,8 @@ export async function kvDelete(key)     { return _safe(() => getApi().delete(`/a
 
 /**
  * parseCertificates — maps /api/v1/certs payload to the shape used by the UI.
- * API returns: { certificates: [{ domain, file, expires_at, is_expired, days_left }] }
+ * API returns: { certificates: [{ domain, expires_at, is_expired, days_left,
+ *   issued_at, issuer, subject, sans, key_type, key_bits, serial_number, source }] }
  */
 export function parseCertificates(certsPayload) {
     if (!certsPayload) return [];
@@ -296,11 +297,18 @@ export function parseCertificates(certsPayload) {
         ? certsPayload
         : (Array.isArray(certsPayload.certificates) ? certsPayload.certificates : []);
     return list.map(c => ({
-        domain:     c.domain     || '',
-        file:       c.file       || '',
-        expires_at: c.expires_at || '',
-        is_expired: c.is_expired === true,
-        days_left:  typeof c.days_left === 'number' ? c.days_left : null,
+        domain:        c.domain        || '',
+        expires_at:    c.expires_at    || '',
+        issued_at:     c.issued_at     || '',
+        is_expired:    c.is_expired    === true,
+        days_left:     typeof c.days_left === 'number' ? c.days_left : null,
+        issuer:        c.issuer        || '',
+        subject:       c.subject       || '',
+        sans:          Array.isArray(c.sans) ? c.sans : [],
+        key_type:      c.key_type      || '',
+        key_bits:      c.key_bits      || 0,
+        serial_number: c.serial_number || '',
+        source:        c.source        || '',
     })).filter(c => c.domain);
 }
 

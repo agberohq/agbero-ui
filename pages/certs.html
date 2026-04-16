@@ -52,15 +52,27 @@
         </div>
     </div>
 
+    <!-- Cert detail modal — scoped to certs page -->
+    <div class="modal-overlay" id="certPageDetailModal">
+        <div class="modal" style="max-width:460px;">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;">
+                <h3 style="margin:0;font-size:14px;" id="certPageDetailTitle">Certificate</h3>
+                <button class="close-modal" style="background:none;border:none;cursor:pointer;font-size:18px;color:var(--text-mute);padding:0 4px;">✕</button>
+            </div>
+            <div id="certPageDetailBody" class="detail-grid"></div>
+        </div>
+    </div>
+
     <!-- Certs table -->
     <div class="table-responsive">
         <table class="simple-table">
             <thead>
             <tr>
                 <th>DOMAIN</th>
-                <th class="hide-mobile">FILE</th>
+                <th class="hide-mobile">SOURCE</th>
+                <th class="hide-mobile">KEY</th>
                 <th>EXPIRY</th>
-                <th style="width:110px;">ACTION</th>
+                <th style="width:80px;">ACTION</th>
             </tr>
             </thead>
             <tbody id="certsTable"></tbody>

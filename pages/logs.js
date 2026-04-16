@@ -35,6 +35,30 @@ export default async function({ find, findAll, on, onUnmount, ready, inject }) {
         return { lvl, ts, full, fields, ip, host };
     }
 
+    // Syntax-highlight JSON for the expanded body
+    function _highlightJson(obj) {
+        return JSON.stringify(obj, null, 2)
+            .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+            .replace(/("(\\u[a-zA-Z0-9]{4}|\\[^u]|[^\\"])*"(\s*:)?|\b(true|false|null)\b|-?\d+(?:\.\d*)?(?:[eE][+\-]?\d+)?)/g, m => {
+                let cls = 'json-num';
+                if (/^"/.test(m)) cls = /:$/.test(m) ? 'json-key' : 'json-str';
+                else if (/true|false/.test(m)) cls = 'json-bool';
+                else if (/null/.test(m)) cls = 'json-null';
+                return `<span class="${cls}">${m}</span>`;
+            });
+    }
+
+    // Rebuild the host filter dropdown from current logs
+    function _updateHostFilter() {
+        const sel = find('#logsHostFilter');
+        if (!sel) return;
+        const hosts = new Set();
+        logs.forEach(l => { const { host } = parseEntry(l); if (host) hosts.add(host); });
+        const current = sel.value;
+        sel.innerHTML = '<option value="">All hosts</option>' +
+            [...hosts].sort().map(h => `<option value="${h}"${h === current ? ' selected' : ''}>${h}</option>`).join('');
+    }
+
     function renderLogs() {
         const el = find('#logsList');
         if (!el) return;
@@ -42,11 +66,13 @@ export default async function({ find, findAll, on, onUnmount, ready, inject }) {
             el.innerHTML = `<div style="color:var(--text-mute);text-align:center;padding:40px;"><span style="display:block;font-size:24px;margin-bottom:10px;">📭</span>No logs yet. Waiting for traffic...</div>`;
             return;
         }
-        // Apply level filter then search filter
-        const term = searchTerm.toLowerCase();
+        _updateHostFilter();
+        const term       = searchTerm.toLowerCase();
+        const hostFilter = find('#logsHostFilter')?.value || '';
         const filtered = logs.filter(l => {
-            const { lvl, full } = parseEntry(l);
+            const { lvl, full, host } = parseEntry(l);
             if (filter !== 'ALL' && lvl !== filter) return false;
+            if (hostFilter && host !== hostFilter) return false;
             if (term && !full.toLowerCase().includes(term) && !JSON.stringify(l).toLowerCase().includes(term)) return false;
             return true;
         });
@@ -63,7 +89,7 @@ export default async function({ find, findAll, on, onUnmount, ready, inject }) {
                     m => `<mark style="background:var(--warning);color:#000;border-radius:2px;padding:0 1px;">${m}</mark>`)
                 : full;
             const ipBadge    = ip ? `<span class="log-ip" data-ip="${ip}" data-host="${host}" style="font-family:var(--font-mono);font-size:10px;color:var(--text-mute);margin-left:6px;padding:1px 4px;border:1px solid var(--border);border-radius:3px;cursor:pointer;" title="Click to block">${ip}</span>` : '';
-            const jsonToggle = hasJson ? `<details class="log-details"${isAllExpanded ? ' open' : ''}><summary class="log-json-toggle">{…}</summary><div class="log-json-body"><pre>${JSON.stringify(fields, null, 2)}</pre></div></details>` : '';
+            const jsonToggle = hasJson ? `<details class="log-details"${isAllExpanded ? ' open' : ''}><summary class="log-json-toggle">{…}</summary><div class="log-json-body"><pre class="log-json-pre">${_highlightJson(fields)}</pre></div></details>` : '';
             return `<div class="log-entry" data-ip="${ip}" data-host="${host}"><span class="log-ts">${ts}</span><span class="log-lvl" style="color:${color};">${lvl}</span><span class="log-msg">${highlightedFull}${ipBadge} ${jsonToggle}</span></div>`;
         }).join('');
     }
@@ -138,7 +164,19 @@ export default async function({ find, findAll, on, onUnmount, ready, inject }) {
         renderLogs();
     });
 
-    // Click IP badge → open firewall rule pre-filled with ip + host
+    // Expanding a JSON detail pauses polling to prevent flicker; collapsing resumes
+    on('.log-details', 'toggle', (e, det) => {
+        if (det.open && !paused) {
+            paused = true;
+            const btn = find('#logsPauseBtn');
+            if (btn) btn.title = 'Resume live updates';
+            const svg = find('#logsPauseIcon');
+            if (svg) svg.innerHTML = ICON_RESUME;
+        }
+    });
+
+    // Host filter
+    on('#logsHostFilter', 'change', () => renderLogs());
     on('.log-ip', 'click', (e, el) => {
         e.stopPropagation();
         const ip   = el.dataset.ip   || '';

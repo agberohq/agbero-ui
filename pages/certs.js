@@ -10,7 +10,7 @@ export default async function({ find, on, onUnmount, ready, inject }) {
 
     function _destroyCertCountdowns() { for (const h of _certCountdowns.values()) h.destroy(); _certCountdowns.clear(); }
 
-    function emptyRow(html) { return `<tr><td colspan="4" style="padding:24px;"><div class="empty-state">${html}</div></td></tr>`; }
+    function emptyRow(html) { return `<tr><td colspan="5" style="padding:24px;"><div class="empty-state">${html}</div></td></tr>`; }
 
     function certRow(c) {
         const daysLeft = c.days_left;
@@ -24,13 +24,21 @@ export default async function({ find, on, onUnmount, ready, inject }) {
             : useLive
                 ? `<span id="${cdId}" style="color:${color};font-family:var(--font-mono);font-size:12px;"></span>`
                 : `<span style="color:${color};font-family:var(--font-mono);font-size:12px;">${countdown.daysLabel(daysLeft)}</span>`;
-        return `<tr>
+        const sourceLabel = c.source === 'letsencrypt' ? "Let's Encrypt" : c.source === 'local_auto' ? 'Auto' : c.source === 'custom' ? 'Custom' : '—';
+        const sourceBadge = c.source === 'letsencrypt'
+            ? `<span class="badge success" style="font-size:10px;">${sourceLabel}</span>`
+            : c.source === 'custom'
+                ? `<span class="badge warning" style="font-size:10px;">${sourceLabel}</span>`
+                : `<span class="badge" style="font-size:10px;">${sourceLabel}</span>`;
+        const keyInfo  = c.key_type ? `${c.key_type}${c.key_bits ? '-' + c.key_bits : ''}` : '—';
+        const certData = encodeURIComponent(JSON.stringify(c));
+        return `<tr class="clickable" data-cert="${certData}" style="cursor:pointer;" title="Click for details">
             <td class="mono" style="font-size:12px;">${c.domain}</td>
-            <td class="hide-mobile mono" style="font-size:11px;color:var(--text-mute);">${c.file}</td>
+            <td class="hide-mobile">${sourceBadge}</td>
+            <td class="hide-mobile mono" style="font-size:11px;color:var(--text-mute);">${keyInfo}</td>
             <td>${label}<span style="font-size:11px;color:var(--text-mute);margin-left:6px;">${expiry}</span></td>
             <td><button class="btn small certs-delete-btn" data-domain="${c.domain}" style="color:var(--danger);border-color:rgba(255,59,48,0.4);">Delete</button></td>
-        </tr>`;
-    }
+        </tr>`;    }
 
     function _attachCertCountdowns(parsed) {
         _destroyCertCountdowns();
@@ -80,6 +88,42 @@ export default async function({ find, on, onUnmount, ready, inject }) {
         const domains = Object.keys((store.get('lastConfig') || {}).hosts || {});
         dl.innerHTML = domains.map(d => `<option value="${d}">`).join('');
     }
+
+    function _openCertDetail(cert) {
+        const titleEl = find('#certPageDetailTitle');
+        const bodyEl  = find('#certPageDetailBody');
+        if (!titleEl || !bodyEl) return;
+        titleEl.textContent = cert.domain;
+        const expiry   = cert.expires_at ? new Date(cert.expires_at).toLocaleDateString([], { year:'numeric', month:'short', day:'numeric' }) : '—';
+        const issued   = cert.issued_at  ? new Date(cert.issued_at).toLocaleDateString([], { year:'numeric', month:'short', day:'numeric' }) : '—';
+        const color    = countdown.daysColor(cert.days_left);
+        const daysNum  = cert.days_left != null ? (cert.days_left <= 0 ? 'Expired' : `${cert.days_left} days`) : '—';
+        const sourceLabel = cert.source === 'letsencrypt' ? "Let's Encrypt" : cert.source === 'local_auto' ? 'Auto (local)' : cert.source === 'custom' ? 'Custom' : '—';
+        const keyInfo  = cert.key_type ? `${cert.key_type}${cert.key_bits ? ' ' + cert.key_bits + '-bit' : ''}` : '—';
+        const sansHtml = cert.sans?.length
+            ? cert.sans.map(s => `<span style="font-family:var(--font-mono);font-size:10px;background:var(--hover-bg);padding:1px 5px;border-radius:3px;margin:1px 2px;display:inline-block;">${s}</span>`).join('')
+            : '—';
+        bodyEl.innerHTML = [
+            ['Domain',    cert.domain],
+            ['Status',    cert.is_expired ? '<span style="color:var(--danger);font-weight:500;">Expired</span>' : cert.days_left != null && cert.days_left < 7 ? '<span style="color:var(--warning);font-weight:500;">Expiring soon</span>' : '<span style="color:var(--success);">Valid</span>'],
+            ['Days Left', `<span style="color:${color};font-weight:500;">${daysNum}</span>`],
+            ['Expires',   expiry],
+            ['Issued',    issued],
+            ['Source',    sourceLabel],
+            ['Key',       keyInfo],
+            ['Issuer',    cert.issuer  || '—'],
+            ['Serial',    cert.serial_number ? `<span style="font-family:var(--font-mono);font-size:10px;">${cert.serial_number}</span>` : '—'],
+            ['SANs',      sansHtml],
+        ].map(([k,v]) => `<div class="detail-row"><span class="detail-label">${k}</span><span class="detail-value">${v}</span></div>`).join('');
+        oja.modal.open('certPageDetailModal');
+    }
+
+    on('#certsTable', 'click', (e) => {
+        if (e.target.closest('.certs-delete-btn')) return;
+        const row = e.target.closest('tr[data-cert]');
+        if (!row) return;
+        try { _openCertDetail(JSON.parse(decodeURIComponent(row.dataset.cert))); } catch {}
+    });
 
     on('#certsUploadBtn', 'click', () => { _populateDomainList(); find('#certsUploadForm').style.display = ''; find('#certDomain')?.focus(); });
     on('#certsUploadCancelBtn', 'click', () => {
@@ -143,7 +187,7 @@ export default async function({ find, on, onUnmount, ready, inject }) {
     if (cached) render(cached);
     else {
         const tbody = find('#certsTable');
-        if (tbody) tbody.innerHTML = `<tr><td colspan="4"><div class="loading-rows"><div class="loading-row"></div><div class="loading-row"></div><div class="loading-row"></div></div></td></tr>`;
+        if (tbody) tbody.innerHTML = `<tr><td colspan="5"><div class="loading-rows"><div class="loading-row"></div><div class="loading-row"></div><div class="loading-row"></div></div></td></tr>`;
     }
     refresh();
 

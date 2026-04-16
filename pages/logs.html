@@ -18,12 +18,15 @@
                 <option value="1000">Last 1000</option>
             </select>
             <span class="divider-v hide-mobile"></span>
-            <!-- Phase 7 #50 — full-text search -->
-            <div style="position:relative;display:flex;align-items:center;">
+            <select id="logsHostFilter" style="width:auto;margin:0;font-size:11px;">
+                <option value="">All hosts</option>
+            </select>
+            <span class="divider-v hide-mobile"></span>
+            <div style="position:relative;">
                 <input type="text" id="logsSearch" placeholder="Search logs…"
-                       style="width:160px;height:var(--btn-h-sm);padding:0 24px 0 8px;font-size:12px;border:1px solid var(--border);border-radius:6px;background:var(--panel-bg);color:var(--text-main);outline:none;"
+                       class="search-input" style="width:160px;height:var(--btn-h-sm);padding:0 26px 0 8px;font-size:12px;box-sizing:border-box;"
                        autocomplete="off" spellcheck="false">
-                <button id="logsSearchClear" style="position:absolute;right:6px;background:none;border:none;cursor:pointer;color:var(--text-mute);font-size:12px;padding:0;display:none;">✕</button>
+                <button id="logsSearchClear" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:var(--text-mute);font-size:12px;padding:0;line-height:1;display:none;">✕</button>
             </div>
         </div>
 

@@ -29,24 +29,32 @@ export default async function({ find, findAll, on, onUnmount, ready, inject }) {
         const bodyEl  = find('#certDetailBody');
         if (!titleEl || !bodyEl) return;
         titleEl.textContent = cert.domain;
-        const expiry  = cert.expires_at ? new Date(cert.expires_at).toLocaleString() : '—';
-        const color   = countdown.daysColor(cert.days_left);
-        const daysNum = cert.days_left !== null && cert.days_left !== undefined
+        const expiry   = cert.expires_at ? new Date(cert.expires_at).toLocaleDateString([], { year:'numeric', month:'short', day:'numeric' }) : '—';
+        const issued   = cert.issued_at  ? new Date(cert.issued_at).toLocaleDateString([], { year:'numeric', month:'short', day:'numeric' }) : '—';
+        const color    = countdown.daysColor(cert.days_left);
+        const daysNum  = cert.days_left !== null && cert.days_left !== undefined
             ? (cert.days_left <= 0 ? 'Expired' : `${cert.days_left} days`)
             : '—';
+        const sourceLabel = cert.source === 'letsencrypt' ? "Let's Encrypt" : cert.source === 'local_auto' ? 'Auto (local)' : cert.source === 'custom' ? 'Custom' : '—';
+        const keyInfo  = cert.key_type ? `${cert.key_type}${cert.key_bits ? ' ' + cert.key_bits + '-bit' : ''}` : '—';
+        const sansHtml = cert.sans?.length
+            ? cert.sans.map(s => `<span style="font-family:var(--font-mono);font-size:10px;background:var(--hover-bg);padding:1px 5px;border-radius:3px;margin:1px 2px;display:inline-block;">${s}</span>`).join('')
+            : '—';
         bodyEl.innerHTML = [
-            ['Domain',      cert.domain],
-            ['File',        cert.file    || '—'],
-            ['Expires',     expiry],
-            ['Days Left',   `<span style="color:${color};font-weight:500;">${daysNum}</span>`],
-            ['Status',      cert.is_expired
-                                ? '<span style="color:var(--danger);font-weight:500;">Expired</span>'
-                                : cert.days_left !== null && cert.days_left < 7
-                                    ? '<span style="color:var(--warning);font-weight:500;">Expiring soon</span>'
-                                    : '<span style="color:var(--success);">Valid</span>'],
-            ['Auto-renew',  cert.is_expired === false && !cert.file
-                                ? '<span style="color:var(--success);">Yes (Let\'s Encrypt)</span>'
-                                : cert.file ? 'No (custom cert)' : '—'],
+            ['Domain',     cert.domain],
+            ['Status',     cert.is_expired
+                ? '<span style="color:var(--danger);font-weight:500;">Expired</span>'
+                : cert.days_left !== null && cert.days_left < 7
+                    ? '<span style="color:var(--warning);font-weight:500;">Expiring soon</span>'
+                    : '<span style="color:var(--success);">Valid</span>'],
+            ['Days Left',  `<span style="color:${color};font-weight:500;">${daysNum}</span>`],
+            ['Expires',    expiry],
+            ['Issued',     issued],
+            ['Source',     sourceLabel],
+            ['Key',        keyInfo],
+            ['Issuer',     cert.issuer  || '—'],
+            ['Serial',     cert.serial_number ? `<span style="font-family:var(--font-mono);font-size:10px;">${cert.serial_number}</span>` : '—'],
+            ['SANs',       sansHtml],
         ].map(([k,v]) => `<div class="detail-row"><span class="detail-label">${k}</span><span class="detail-value">${v}</span></div>`).join('');
         modal.open('certDetailModal');
     }
