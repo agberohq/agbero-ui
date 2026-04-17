@@ -498,15 +498,29 @@ route "/" {
         const msgEl     = find('#strictDeleteMessage');
         const targetEl  = find('#strictDeleteTarget');
         const inputEl   = find('#strictDeleteInput');
-        const confirmEl = find('#strictDeleteConfirmBtn');
         const errEl     = find('#strictDeleteError');
-        if (msgEl)     msgEl.innerHTML = message || '';
-        if (targetEl)  targetEl.textContent = targetText || '';
-        if (inputEl)   { inputEl.value = ''; inputEl.placeholder = targetText || ''; }
-        if (confirmEl) confirmEl.dataset.target = targetText || '';
-        if (errEl)     errEl.style.display = 'none';
+        if (msgEl)    msgEl.innerHTML = message || '';
+        if (targetEl) targetEl.textContent = targetText || '';
+        if (inputEl)  { inputEl.value = ''; inputEl.placeholder = targetText || ''; }
+        if (errEl)    errEl.style.display = 'none';
+
+        // Clone confirm button fresh — removes any previous click handler
+        const oldConfirm = find('#strictDeleteConfirmBtn');
+        const confirmEl  = oldConfirm ? oldConfirm.cloneNode(true) : null;
+        if (confirmEl && oldConfirm) {
+            confirmEl.disabled = true;          // start disabled
+            oldConfirm.parentNode.replaceChild(confirmEl, oldConfirm);
+        }
+
+        // Enable/disable as user types
+        const _updateBtn = () => {
+            if (confirmEl) confirmEl.disabled = (inputEl?.value.trim() !== targetText);
+        };
+        inputEl?.addEventListener('input', _updateBtn);
+
         modal.open('strictDeleteModal');
         requestAnimationFrame(() => inputEl?.focus());
+
         const _doDelete = async () => {
             const typed = inputEl?.value.trim();
             if (typed !== targetText) {
@@ -520,11 +534,7 @@ route "/" {
                 if (errEl) { errEl.textContent = err.message || 'Delete failed'; errEl.style.display = 'block'; }
             }
         };
-        if (confirmEl) {
-            const old = confirmEl.cloneNode(true);
-            confirmEl.parentNode.replaceChild(old, confirmEl);
-            old.addEventListener('click', _doDelete, { once: true });
-        }
+        confirmEl?.addEventListener('click', _doDelete, { once: true });
     });
 
     on('#strictDeleteCancelBtn', 'click', () => modal.closeAll());

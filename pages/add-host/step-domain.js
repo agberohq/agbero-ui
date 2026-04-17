@@ -11,7 +11,9 @@ export default async function({ find, findAll, on, onUnmount, ready, props, inje
         const h=(d||'').trim().toLowerCase();
         if(!h)return false;
         if(/^\d+\.\d+\.\d+\.\d+$/.test(h))return true;
-        return['localhost','.localhost','.local','.internal','.test','.example'].some(s=>h===s.replace('.',''))||h.endsWith('.local')||h.endsWith('.localhost')||h.endsWith('.internal')||h.endsWith('.test')||h.endsWith('.example');
+        const exact=['localhost'];
+        const suffixes=['.localhost','.local','.internal','.test','.example'];
+        return exact.includes(h)||suffixes.some(s=>h===s.slice(1)||h.endsWith(s));
     }
     function _currentMode(){return find('[name="tls_mode"]:checked')?.value||'auto';}
     function _applyTLSVisibility(){
@@ -67,9 +69,18 @@ export default async function({ find, findAll, on, onUnmount, ready, props, inje
 
     emit('wizard:set-validate',{validate:()=>{
         const dom=(wizard.draftGet('domain')||'').trim();
-        if(!dom)return'Domain is required';if(dom.includes('://'))return'Domain must not include a protocol prefix';if(dom.includes('..'))return'Invalid domain';
+        if(!dom)return{msg:'Domain is required',field:'wzDomainInput'};
+        if(dom.includes('://'))return{msg:'Domain must not include a protocol prefix',field:'wzDomainInput'};
+        if(dom.includes('..'))return{msg:'Invalid domain',field:'wzDomainInput'};
         const mode=wizard.draftGet('tls_mode')||'auto',local=_isLocal(dom);
-        if(!local){if(mode==='auto'&&!(wizard.draftGet('tls_le_email')||'').includes('@'))return"Let's Encrypt requires a valid email address";if(mode==='local'){if(!(wizard.draftGet('tls_cert')||'').trim())return'Certificate file path is required';if(!(wizard.draftGet('tls_key')||'').trim())return'Key file path is required';}if(mode==='custom_ca'&&!(wizard.draftGet('tls_ca_root')||'').trim())return'CA root path is required for Custom CA mode';}
+        if(!local){
+            if(mode==='auto'&&!(wizard.draftGet('tls_le_email')||'').includes('@'))return{msg:"Let's Encrypt requires a valid email address",field:'wzLEEmail'};
+            if(mode==='local'){
+                if(!(wizard.draftGet('tls_cert')||'').trim())return{msg:'Certificate file path is required',field:'wzTLSCert'};
+                if(!(wizard.draftGet('tls_key')||'').trim())return{msg:'Key file path is required',field:'wzTLSKey'};
+            }
+            if(mode==='custom_ca'&&!(wizard.draftGet('tls_ca_root')||'').trim())return{msg:'CA root path is required for Custom CA mode',field:'wzCARoot'};
+        }
         return null;
     }});
 

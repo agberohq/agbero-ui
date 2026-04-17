@@ -86,11 +86,11 @@ export default async function({ find, findAll, on, onUnmount, ready, props }) {
     emit('wizard:set-validate',{validate:()=>{
         const name=(find('#wzTcpName')?.value||'').trim();
         const listen=(find('#wzTcpListen')?.value||'').trim();
-        if(!name) return 'Proxy name is required';
-        if(!/^[a-z0-9-]+$/.test(name)) return 'Name must be lowercase alphanumeric and hyphens only';
-        if(!listen) return 'Listen address is required (host:port)';
-        if(!listen.includes(':')) return 'Listen address must be host:port format (e.g. 0.0.0.0:6379)';
-        if(!backends.some(b=>b.address.trim())) return 'At least one backend address is required';
+        if(!name) return {msg:'Proxy name is required', field:'wzTcpName'};
+        if(!/^[a-z0-9-]+$/.test(name)) return {msg:'Name must be lowercase alphanumeric and hyphens only', field:'wzTcpName'};
+        if(!listen) return {msg:'Listen address is required (e.g. 0.0.0.0:6379)', field:'wzTcpListen'};
+        if(!listen.includes(':')) return {msg:'Listen address must be host:port format (e.g. 0.0.0.0:6379)', field:'wzTcpListen'};
+        if(!backends.some(b=>b.address.trim())) return {msg:'At least one backend address is required'};
         return null;
     }});
 

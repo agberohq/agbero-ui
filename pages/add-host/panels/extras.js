@@ -218,7 +218,7 @@ export function extrasHTML(route) {
     </div>`;
 }
 
-export function wireExtras(el, route) {
+export function wireExtras(el, route, onSync) {
     // Rate key custom field show/hide
     const rateKeySelect = el.querySelector('[data-wz-route-field="extras.rate_key"]');
     const rateKeyCustom = el.querySelector(`#rateKeyCustom_${route.id}`);
@@ -244,9 +244,9 @@ export function wireExtras(el, route) {
 
         rewriteList.querySelectorAll('[data-idx]').forEach(row => {
             const i = +row.dataset.idx;
-            row.querySelector('.wz-rw-pattern')?.addEventListener('input', e => { route.extras.rewrites[i].pattern = e.target.value; });
-            row.querySelector('.wz-rw-target')?.addEventListener('input',  e => { route.extras.rewrites[i].target  = e.target.value; });
-            row.querySelector('.wz-rw-rm')?.addEventListener('click', () => { route.extras.rewrites.splice(i, 1); renderRewrites(); });
+            row.querySelector('.wz-rw-pattern')?.addEventListener('input', e => { route.extras.rewrites[i].pattern = e.target.value; onSync?.(); });
+            row.querySelector('.wz-rw-target')?.addEventListener('input',  e => { route.extras.rewrites[i].target  = e.target.value; onSync?.(); });
+            row.querySelector('.wz-rw-rm')?.addEventListener('click', () => { route.extras.rewrites.splice(i, 1); renderRewrites(); onSync?.(); });
         });
     }
 
@@ -254,6 +254,7 @@ export function wireExtras(el, route) {
         ?.addEventListener('click', () => {
             route.extras.rewrites.push({ pattern: '', target: '' });
             renderRewrites();
+            onSync?.();
         });
 
     renderRewrites();

@@ -1,8 +1,9 @@
-<!-- Route tab bar -->
-<div id="wzRouteTabs" style="margin-bottom:10px;"></div>
+<!-- Route tab bar + Add Route in one row -->
+<div style="display:flex;align-items:center;gap:6px;margin-bottom:10px;">
+    <div id="wzRouteTabs" style="flex:1;min-width:0;"></div>
+    <button type="button" class="btn small" id="wzAddRouteBtn"
+            style="flex-shrink:0;white-space:nowrap;">+ Route</button>
+</div>
 
 <!-- Route panels outlet -->
 <div id="wzRoutePanels"></div>
-
-<!-- Add route -->
-<button type="button" class="btn small" id="wzAddRouteBtn" style="margin-top:10px;">+ Add Route</button>

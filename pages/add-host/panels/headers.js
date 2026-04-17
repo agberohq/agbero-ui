@@ -42,13 +42,13 @@ function _sectionHTML(title, prefix, h, id) {
     </div>`;
 }
 
-export function wireHeaders(el, route) {
+export function wireHeaders(el, route, onSync) {
     if (!route.headers)          route.headers          = {};
     if (!route.headers.request)  route.headers.request  = { set: {}, add: {}, remove: [] };
     if (!route.headers.response) route.headers.response = { set: {}, add: {}, remove: [] };
     const h = route.headers;
 
-    function _sync() { /* headers are mutated in place — draft sync happens via parent's change listener */ }
+    function _sync() { onSync?.(); }
 
     function _renderList(prefix, op, id) {
         const section = prefix === 'req' ? h.request : h.response;

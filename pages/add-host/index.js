@@ -41,6 +41,25 @@ export default async function({ find, findAll, on, onUnmount, ready, inject }) {
         p.set(steps.length > 1 ? (_step / (steps.length - 1)) * 100 : 0);
     }
 
+    // Clear any previously highlighted field error
+    function _clearFieldErrors() {
+        find('#addHostContent')?.querySelectorAll('.wz-input-error,.wz-select-error')
+            .forEach(el => el.classList.remove('wz-input-error', 'wz-select-error'));
+    }
+
+    // Highlight a field by id or data-wz-field attribute
+    function _highlightField(fieldId) {
+        if (!fieldId) return;
+        const container = find('#addHostContent');
+        if (!container) return;
+        const el = container.querySelector(`#${CSS.escape(fieldId)},[name="${CSS.escape(fieldId)}"]`);
+        if (el) {
+            el.classList.add('wz-input-error');
+            el.focus();
+            el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+        }
+    }
+
     function _wireNav() {
         if (_navAbort) _navAbort.abort();
         _navAbort = new AbortController();
@@ -48,10 +67,25 @@ export default async function({ find, findAll, on, onUnmount, ready, inject }) {
         const steps=buildSteps(), isLast=_step===steps.length-1, navEl=find('#addHostNav'), nextEl=find('#addHostNextBtn'), errEl=find('#addHostValidError');
         if (navEl)  navEl.style.display  = _step === 0 ? 'none' : 'flex';
         if (nextEl) nextEl.style.display = isLast ? 'none' : '';
-        find('#addHostPrevBtn')?.addEventListener('click', () => { if (errEl) errEl.style.display='none'; _goStep(Math.max(0, _step-1)); }, { signal: sig });
+        find('#addHostPrevBtn')?.addEventListener('click', () => {
+            if (errEl) errEl.style.display='none';
+            _clearFieldErrors();
+            _goStep(Math.max(0, _step-1));
+        }, { signal: sig });
         find('#addHostNextBtn')?.addEventListener('click', async () => {
             if (errEl) errEl.style.display='none';
-            if (_validate) { const err=await _validate(); if(err){if(errEl){errEl.textContent=err;errEl.style.display='block';}return;} }
+            _clearFieldErrors();
+            if (_validate) {
+                const result = await _validate();
+                if (result) {
+                    // Support both plain string errors and {msg, field} objects
+                    const msg   = typeof result === 'string' ? result : (result.msg   || result.message || String(result));
+                    const field = typeof result === 'string' ? null   : (result.field || null);
+                    if (errEl) { errEl.textContent = msg; errEl.style.display = 'block'; }
+                    if (field) _highlightField(field);
+                    return;
+                }
+            }
             draftSet('_step', _step+1); _goStep(_step+1);
         }, { signal: sig });
     }
